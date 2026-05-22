@@ -1,0 +1,20 @@
+[
+  {
+    "label": "Setup Development Environment",
+    "command": "./setup_dev_env.sh",
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "shell": {
+      "program": "C:/Program Files/Git/bin/bash.exe",
+    },
+    "tags": ["build"],
+  },
+  {
+    "label": "Run All Checks",
+    "command": "./run_checks.sh",
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "shell": {
+      "program": "C:/Program Files/Git/bin/bash.exe",
+    },
+    "tags": ["build"],
+  },
+]
