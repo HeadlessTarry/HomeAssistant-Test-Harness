@@ -2,7 +2,6 @@
 name: verify
 description: Use when asked to verify changes, run all checks, confirm everything
   is working, run tests, or check nothing is broken before committing
-user-invocable: true
 ---
 
 # Verify
