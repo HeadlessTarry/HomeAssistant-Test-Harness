@@ -7,7 +7,8 @@ on:
 
 jobs:
   auto-merge:
-    uses: HeadlessTarry/.github/.github/workflows/auto-merge.yml@3ada7956fe61e119460f693cc0c1324f357f501c
+    uses: HeadlessTarry/.github/.github/workflows/auto-merge.yml@e488dac40e5fa97dafb48a9d2ab8d2e3fed2f9f4
     permissions:
-      pull-requests: write
       contents: write
+    secrets:
+      AUTO_APPROVAL_PRIVATE_KEY: ${{ secrets.AUTO_APPROVAL_PRIVATE_KEY }}
