@@ -1,0 +1,13 @@
+---
+name: Auto-Merge
+
+on:
+  pull_request_target:
+    types: [opened, synchronize]
+
+jobs:
+  auto-merge:
+    uses: HeadlessTarry/.github/.github/workflows/auto-merge.yml@22191ff8dc2e3243029d2bc82ea3c513a465605b
+    permissions:
+      pull-requests: write
+      contents: write
