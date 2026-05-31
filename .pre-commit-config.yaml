@@ -24,7 +24,7 @@ repos:
 
   # General
   - repo: https://github.com/markdownlint/markdownlint
-    rev: v0.15.0
+    rev: v0.16.0
     hooks:
       - id: markdownlint_docker
         args: ['--style', '.markdownlint_style.rb']
