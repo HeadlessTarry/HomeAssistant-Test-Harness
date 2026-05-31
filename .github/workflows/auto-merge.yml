@@ -7,7 +7,7 @@ on:
 
 jobs:
   auto-merge:
-    uses: HeadlessTarry/.github/.github/workflows/auto-merge.yml@fd4d97fb32215ed0182e95f597af954baa2881d1
+    uses: HeadlessTarry/.github/.github/workflows/auto-merge.yml@3ada7956fe61e119460f693cc0c1324f357f501c
     permissions:
       pull-requests: write
       contents: write
