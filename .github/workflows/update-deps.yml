@@ -74,7 +74,7 @@ jobs:
           git checkout -b "$BRANCH"
           git add uv.lock
           git commit -m "chore: weekly dependency update"
-          git push origin "$BRANCH"
+          git push --force origin "$BRANCH"
           gh pr create \
             --title "chore: weekly dependency update" \
             --body "Automated weekly dependency update via \`uv lock --upgrade\`.
