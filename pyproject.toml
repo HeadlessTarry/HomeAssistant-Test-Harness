@@ -7,7 +7,7 @@ name = "ha_integration_test_harness"
 version = "0.9.1"
 description = "Pytest plugin for integration testing Home Assistant and AppDaemon configurations"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.14.2"
 license = "MIT"
 license-files=["LICENSE"]
 authors = [
@@ -20,7 +20,7 @@ classifiers = [
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Testing",
 ]
 
@@ -42,7 +42,7 @@ dev = [
     "types-requests>=2.33.0.20260513",
     "types-python-dateutil",
     "types-PyYAML>=6.0.0",
-    "homeassistant-stubs",
+    "homeassistant-stubs>=2026.6.1",
     "build>=1.0.0"
 ]
 
@@ -76,7 +76,7 @@ ha_persistent_entities_path = "examples/persistent_entities.yaml"
 
 [tool.black]
 line-length = 200
-target-version = ["py312"]
+target-version = ["py314"]
 
 [tool.isort]
 profile = "black"
@@ -87,7 +87,7 @@ max-line-length = 200
 exclude = [".venv", "__pycache__", ".pytest_cache", ".mypy_cache", "*.egg-info", "build", "dist"]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.14"
 ignore_missing_imports = true
 strict = true
 explicit_package_bases = true

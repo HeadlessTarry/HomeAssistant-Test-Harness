@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Python 3.12 or later
+- Python 3.14.2 or later
 - Docker Engine (running and accessible)
 - Docker Compose V2
 - A Home Assistant configuration repository
