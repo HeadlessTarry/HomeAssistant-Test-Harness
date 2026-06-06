@@ -4,7 +4,7 @@
 
 ### Prerequisites
 
-- Python 3.12+
+- Python 3.14.2+
 - Docker Engine
 - Docker Compose V2
 - Git

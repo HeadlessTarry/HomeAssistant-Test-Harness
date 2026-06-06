@@ -5,7 +5,7 @@ A pytest plugin for integration testing Home Assistant and AppDaemon configurati
 [![Continuous Integration][ci-badge]][ci-url]
 [![Quality Gate Status][quality-badge]][quality-url]
 [![License: MIT][license-badge]][license-url]
-[![Python 3.12+][python-badge]][python-url]
+[![Python 3.14+][python-badge]][python-url]
 [![Code style: black][black-badge]][black-url]
 
 [ci-badge]: https://github.com/HeadlessTarry/HomeAssistant-Test-Harness/actions/workflows/ci.yaml/badge.svg
@@ -14,7 +14,7 @@ A pytest plugin for integration testing Home Assistant and AppDaemon configurati
 [quality-url]: https://sonarcloud.io/summary/new_code?id=HeadlessTarry_HomeAssistant-Test-Harness
 [license-badge]: https://img.shields.io/badge/License-MIT-yellow.svg
 [license-url]: https://opensource.org/licenses/MIT
-[python-badge]: https://img.shields.io/badge/python-3.12+-blue.svg
+[python-badge]: https://img.shields.io/badge/python-3.14+-blue.svg
 [python-url]: https://www.python.org/downloads/
 [black-badge]: https://img.shields.io/badge/code%20style-black-000000.svg
 [black-url]: https://github.com/psf/black
@@ -53,7 +53,7 @@ See the [Installation Guide](documentation/installation.md) for alternative meth
 
 ### Requirements
 
-- Python 3.12+
+- Python 3.14.2+
 - Docker Engine
 - Docker Compose V2
 - Home Assistant configuration directory with `configuration.yaml`
