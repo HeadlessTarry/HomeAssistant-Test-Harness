@@ -2,11 +2,22 @@
 
 A pytest plugin for integration testing Home Assistant and AppDaemon configurations using Docker containers.
 
-[![Continuous Integration](https://github.com/HeadlessTarry/HomeAssistant-Test-Harness/actions/workflows/ci.yaml/badge.svg)](https://github.com/HeadlessTarry/HomeAssistant-Test-Harness/actions/workflows/ci.yaml)
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=HeadlessTarry_HomeAssistant-Test-Harness&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=HeadlessTarry_HomeAssistant-Test-Harness)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Continuous Integration][ci-badge]][ci-url]
+[![Quality Gate Status][quality-badge]][quality-url]
+[![License: MIT][license-badge]][license-url]
+[![Python 3.12+][python-badge]][python-url]
+[![Code style: black][black-badge]][black-url]
+
+[ci-badge]: https://github.com/HeadlessTarry/HomeAssistant-Test-Harness/actions/workflows/ci.yaml/badge.svg
+[ci-url]: https://github.com/HeadlessTarry/HomeAssistant-Test-Harness/actions/workflows/ci.yaml
+[quality-badge]: https://sonarcloud.io/api/project_badges/measure?project=HeadlessTarry_HomeAssistant-Test-Harness&metric=alert_status
+[quality-url]: https://sonarcloud.io/summary/new_code?id=HeadlessTarry_HomeAssistant-Test-Harness
+[license-badge]: https://img.shields.io/badge/License-MIT-yellow.svg
+[license-url]: https://opensource.org/licenses/MIT
+[python-badge]: https://img.shields.io/badge/python-3.12+-blue.svg
+[python-url]: https://www.python.org/downloads/
+[black-badge]: https://img.shields.io/badge/code%20style-black-000000.svg
+[black-url]: https://github.com/psf/black
 
 ## Features
 

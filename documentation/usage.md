@@ -2,7 +2,9 @@
 
 ## Overview
 
-The integration test harness provides a complete Docker-based test environment for Home Assistant and AppDaemon. Tests run against real instances, not mocks, ensuring your configuration works correctly.
+The integration test harness provides a complete Docker-based test environment for
+Home Assistant and AppDaemon. Tests run against real instances, not mocks, ensuring
+your configuration works correctly.
 
 ## Installation
 
