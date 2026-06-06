@@ -7,7 +7,7 @@ on: # yamllint disable-line rule:truthy
 
 jobs:
   auto-merge:
-    uses: HeadlessTarry/.github/.github/workflows/auto-merge.yml@ac623ad1fb30c673220bce68311c6e03be92c832
+    uses: HeadlessTarry/.github/.github/workflows/auto-merge.yml@8b85aabd86bb0b8e85f8f9d8fb682e9cdabf8beb
     permissions: {}
     secrets:
       AUTO_PRS_PRIVATE_KEY: ${{ secrets.AUTO_PRS_PRIVATE_KEY }}
