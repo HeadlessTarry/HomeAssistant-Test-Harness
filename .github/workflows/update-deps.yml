@@ -1,12 +1,20 @@
 ---
-name: Weekly Dependency Update
+name: 🔒 Weekly Dependency Refresh
 
-# Dependabot now supports updating direct dependencies in uv.lock
-# (see https://github.com/dependabot/dependabot-core/issues/10478),
-# but it cannot update transitive dependencies — aiohttp, cryptography,
-# Jinja2, etc. — in uv.lock. Those transitive deps account for most of
-# the open security advisories in this repo.
-# Track: https://github.com/dependabot/dependabot-core/issues/14073
+# Complements Dependabot (uv ecosystem) which handles security PRs for direct
+# dependencies declared in pyproject.toml.
+#
+# Dependabot cannot update transitive dependencies when the parent dependency
+# constrains the version range (e.g. homeassistant pins aiohttp<3.12). This is
+# a known limitation — see https://github.com/dependabot/dependabot-core/issues/10478
+#
+# This workflow runs `uv lock --upgrade` to bump ALL dependencies (direct and
+# transitive) to their latest COMPATIBLE versions within existing constraints,
+# plus non-security housekeeping bumps that Dependabot would never raise.
+#
+# IMPORTANT: Neither Dependabot nor this workflow can push a transitive dep
+# beyond its parent's version upper bound. Resolving those vulnerabilities
+# requires upgrading the parent dependency (e.g. homeassistant-stubs).
 
 on: # yamllint disable-line rule:truthy
   schedule:
@@ -15,7 +23,7 @@ on: # yamllint disable-line rule:truthy
 
 jobs:
   update-deps:
-    name: 🔒 Update dependencies
+    name: 🔒 Refresh lockfile
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -36,19 +44,19 @@ jobs:
       - name: 🛠️ Install uv
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39  # v8.2.0
 
-      - name: 🧹 Close previous dependency update PRs
+      - name: 🧹 Close previous refresh PRs
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |-
           for pr_number in $(gh pr list \
             --state open \
             --json number,title \
-            --jq '.[] | select(.title | startswith("chore: weekly dependency update")) | .number'); do
+            --jq '.[] | select(.title | startswith("chore: weekly dependency refresh")) | .number'); do
             echo "Closing previous PR #$pr_number"
             gh pr close "$pr_number" --delete-branch
           done
 
-      - name: 🔒 Upgrade all dependencies
+      - name: 🔒 Upgrade all compatible dependencies
         run: uv lock --upgrade
 
       - name: ✅ Verify lockfile resolves
@@ -68,21 +76,29 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |-
-          BRANCH="deps/weekly-update-$(date +%Y-%m-%d)"
+          BRANCH="deps/weekly-refresh-$(date +%Y-%m-%d)"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -b "$BRANCH"
           git add uv.lock
-          git commit -m "chore: weekly dependency update"
+          git commit -m "chore: weekly dependency refresh"
           git push --force origin "$BRANCH"
           gh pr create \
-            --title "chore: weekly dependency update" \
-            --body "Automated weekly dependency update via \`uv lock --upgrade\`.
+            --title "chore: weekly dependency refresh" \
+            --body "Weekly lockfile refresh via \`uv lock --upgrade\` — bumps all
+              dependencies to their latest compatible versions within existing
+              constraints.
 
-              Dependabot handles direct dependency updates in \`uv.lock\` but cannot
-              update transitive dependencies. This PR covers the transitive gap.
+              Dependabot (uv ecosystem) handles security PRs for direct dependencies.
+              This workflow covers:
 
-              See: https://github.com/dependabot/dependabot-core/issues/14073" \
+              - Transitive dependency bumps within parent-constrained ranges
+              - Non-security housekeeping updates Dependabot won't raise
+              - Keeping uv.lock fresh across all resolution markers
+
+              **Note:** Transitive deps pinned by a parent (e.g. aiohttp pinned by
+              homeassistant) cannot exceed the parent's version upper bound. Resolving
+              those vulnerabilities requires upgrading the parent dependency." \
             --label dependencies \
             --base main \
             --head "$BRANCH"
