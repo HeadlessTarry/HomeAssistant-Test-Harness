@@ -1,0 +1,80 @@
+---
+name: Weekly Dependency Update
+
+# Dependabot now supports updating direct dependencies in uv.lock
+# (see https://github.com/dependabot/dependabot-core/issues/10478),
+# but it cannot update transitive dependencies — aiohttp, cryptography,
+# Jinja2, etc. — in uv.lock. Those transitive deps account for most of
+# the open security advisories in this repo.
+# Track: https://github.com/dependabot/dependabot-core/issues/14073
+
+on:
+  schedule:
+    - cron: '0 3 * * 1'   # Monday 03:00 UTC
+  workflow_dispatch:
+
+jobs:
+  update-deps:
+    name: 🔒 Update dependencies
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: ⤵️ Checkout repository
+        uses: actions/checkout@v6
+
+      - name: 🛠️ Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
+
+      - name: 🧹 Close previous dependency update PRs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |-
+          for pr_number in $(gh pr list \
+            --state open \
+            --author "github-actions[bot]" \
+            --json number,title \
+            --jq '.[] | select(.title | startswith("chore: weekly dependency update")) | .number'); do
+            echo "Closing previous PR #$pr_number"
+            gh pr close "$pr_number" --delete-branch
+          done
+
+      - name: 🔒 Upgrade all dependencies
+        run: uv lock --upgrade
+
+      - name: ✅ Verify lockfile resolves
+        run: uv sync --all-extras --frozen
+
+      - name: 📝 Detect changes
+        id: diff
+        run: |-
+          if git diff --quiet uv.lock; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 📤 Create Pull Request
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |-
+          BRANCH="deps/weekly-update-$(date +%Y-%m-%d)"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add uv.lock
+          git commit -m "chore: weekly dependency update"
+          git push origin "$BRANCH"
+          gh pr create \
+            --title "chore: weekly dependency update" \
+            --body "Automated weekly dependency update via \`uv lock --upgrade\`.
+
+              Dependabot handles direct dependency updates in \`uv.lock\` but cannot
+              update transitive dependencies. This PR covers the transitive gap.
+
+              See: https://github.com/dependabot/dependabot-core/issues/14073" \
+            --label dependencies \
+            --base main \
+            --head "$BRANCH"
