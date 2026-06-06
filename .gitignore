@@ -33,6 +33,7 @@ shared_data/
 # Local workspace
 .env
 .env.backup
+.worktrees/
 
 # Package build artifacts
 *.egg
