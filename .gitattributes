@@ -8,8 +8,8 @@
 *.py text
 
 # Configuration files
-*.yaml text
-*.yml text
+*.yaml text eol=lf
+*.yml text eol=lf
 *.toml text
 *.json text
 

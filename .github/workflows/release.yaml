@@ -1,16 +1,15 @@
 ---
 name: Create Release
 
-# yamllint disable-line rule:truthy
-on:
+on: # yamllint disable-line rule:truthy
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version number (e.g., 0.2.0)'
+        description: "Version number (e.g., 0.2.0)"
         required: true
         type: string
       publish:
-        description: 'Publish the release (uncheck for draft)'
+        description: "Publish the release (uncheck for draft)"
         required: true
         type: boolean
         default: true
@@ -35,7 +34,7 @@ jobs:
           token: ${{ steps.release-manager-token.outputs.token }}
 
       - name: 🐍 Set up Python and uv
-        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 #v8.2.0
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           enable-cache: true
 

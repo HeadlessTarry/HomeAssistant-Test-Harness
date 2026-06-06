@@ -1,6 +1,7 @@
+---
 name: Triage GitHub Issue
 
-on:
+on: # yamllint disable-line rule:truthy
   issues:
     types: [opened]
   workflow_dispatch:

@@ -4,8 +4,10 @@
 extends: default
 
 rules:
+  comments:
+    min-spaces-from-content: 1
   line-length:
     max: 200
     level: warning
   new-lines:
-    type: platform
+    type: unix
