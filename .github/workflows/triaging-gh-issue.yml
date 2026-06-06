@@ -1,0 +1,45 @@
+name: Triage GitHub Issue
+
+on:
+  issues:
+    types: [opened]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'Issue number to triage'
+        required: true
+        type: number
+
+jobs:
+  triage:
+    name: 🔍 Triage
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+    steps:
+      - name: ⤵️ Checkout skill source
+        uses: actions/checkout@v6
+        with:
+          repository: HeadlessTarry/Token-Effort
+          path: _skill-source
+          persist-credentials: false
+
+      - name: ⚙️ Install skill
+        run: bash _skill-source/install.sh --skill triaging-gh-issue
+
+      - name: ⤵️ Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: ✨ Run OpenCode
+        uses: anomalyco/opencode/github@76c631d198f9ff620e15468e45f3457d50481b57 # v1.16.2
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          model: opencode-go/qwen3.6-plus
+          prompt: |
+            Use the triaging-gh-issue skill to triage issue ${{ github.event.issue.number || inputs.issue_number }}.
