@@ -5,6 +5,11 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 20
+      semver-patch-days: 10
+      semver-minor-days: 20
+      semver-major-days: 30
 
   - package-ecosystem: pre-commit
     directory: /
