@@ -25,7 +25,7 @@ jobs:
         id: release-manager-token
         uses: actions/create-github-app-token@v3
         with:
-          client-id: ${{ vars.PROJECT_MANAGER_CLIENT_ID }}
+          client-id: ${{ vars.RELEASE_MANAGER_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_MANAGER_PRIVATE_KEY }}
 
       - name: ⤵️ Checkout repository
