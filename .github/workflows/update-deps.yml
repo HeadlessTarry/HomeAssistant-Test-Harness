@@ -21,19 +21,27 @@ jobs:
       contents: write
       pull-requests: write
     steps:
+      - name: 🔑 Authenticate
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.AUTO_PRS_CLIENT_ID }}
+          private-key: ${{ secrets.AUTO_PRS_PRIVATE_KEY }}
+
       - name: ⤵️ Checkout repository
         uses: actions/checkout@v6
+        with:
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: 🛠️ Install uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
 
       - name: 🧹 Close previous dependency update PRs
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |-
           for pr_number in $(gh pr list \
             --state open \
-            --author "github-actions[bot]" \
             --json number,title \
             --jq '.[] | select(.title | startswith("chore: weekly dependency update")) | .number'); do
             echo "Closing previous PR #$pr_number"
@@ -58,7 +66,7 @@ jobs:
       - name: 📤 Create Pull Request
         if: steps.diff.outputs.changed == 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |-
           BRANCH="deps/weekly-update-$(date +%Y-%m-%d)"
           git config user.name "github-actions[bot]"

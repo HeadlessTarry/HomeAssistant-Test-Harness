@@ -10,4 +10,4 @@ jobs:
     uses: HeadlessTarry/.github/.github/workflows/auto-merge.yml@ac623ad1fb30c673220bce68311c6e03be92c832
     permissions: {}
     secrets:
-      AUTO_APPROVAL_PRIVATE_KEY: ${{ secrets.AUTO_APPROVAL_PRIVATE_KEY }}
+      AUTO_PRS_PRIVATE_KEY: ${{ secrets.AUTO_PRS_PRIVATE_KEY }}
