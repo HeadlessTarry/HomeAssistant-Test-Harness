@@ -5,7 +5,7 @@ entities during integration tests. Entities are fully registered in the HA Entit
 Registry (they have unique_ids), so they support area and label assignment via the
 standard entity registry API.
 
-Supported domains: sensor, binary_sensor, input_boolean, switch, light.
+Supported domains: sensor, binary_sensor, input_boolean, switch, light, media_player, select.
 
 WebSocket commands exposed:
   ha_test_harness/entity/create   - Create a new virtual entity.
@@ -26,10 +26,17 @@ from homeassistant.helpers import discovery
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.typing import ConfigType
 
-from .entity import VirtualBinarySensorEntity, VirtualLightEntity, VirtualSensorEntity, VirtualToggleEntity
+from .entity import (
+    VirtualBinarySensorEntity,
+    VirtualLightEntity,
+    VirtualMediaPlayerEntity,
+    VirtualSelectEntity,
+    VirtualSensorEntity,
+    VirtualToggleEntity,
+)
 
 DOMAIN = "ha_test_harness"
-SUPPORTED_DOMAINS = ["sensor", "binary_sensor", "switch", "light"]
+SUPPORTED_DOMAINS = ["sensor", "binary_sensor", "switch", "light", "media_player", "select"]
 _PLATFORM_READY_TIMEOUT = 30  # seconds to wait for a platform callback to be registered
 
 _LOGGER = logging.getLogger(__name__)
@@ -71,7 +78,7 @@ def _create_virtual_entity(domain: str, unique_id: str, entity_id: str, state: s
     """Instantiate the correct VirtualEntity subclass for the given domain.
 
     Args:
-        domain: HA domain ('sensor', 'binary_sensor', 'input_boolean', 'switch', 'light').
+        domain: HA domain ('sensor', 'binary_sensor', 'input_boolean', 'switch', 'light', 'media_player', 'select').
         unique_id: Unique ID string for the entity registry entry.
         entity_id: Desired entity ID (e.g. 'sensor.test_temp').
         state: Initial state string.
@@ -91,6 +98,10 @@ def _create_virtual_entity(domain: str, unique_id: str, entity_id: str, state: s
         return VirtualToggleEntity(unique_id, entity_id, state, attributes)
     if domain == "light":
         return VirtualLightEntity(unique_id, entity_id, state, attributes)
+    if domain == "media_player":
+        return VirtualMediaPlayerEntity(unique_id, entity_id, state, attributes)
+    if domain == "select":
+        return VirtualSelectEntity(unique_id, entity_id, state, attributes)
     raise ValueError(f"Unsupported domain: {domain}")
 
 
