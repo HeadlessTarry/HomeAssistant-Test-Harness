@@ -14,7 +14,7 @@ from typing import Any
 
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.components.light import ColorMode, LightEntity
-from homeassistant.components.media_player import MediaPlayerEntity
+from homeassistant.components.media_player import MediaPlayerEntity, MediaPlayerEntityFeature
 from homeassistant.components.select import SelectEntity
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.entity import ToggleEntity
@@ -249,13 +249,13 @@ class VirtualMediaPlayerEntity(MediaPlayerEntity):
     Supports turn_on/turn_off actions and arbitrary state setting via set_virtual_state().
     Known limitations:
     - No play/pause, volume, mute, source, or media metadata support
-    - No supported_features bitmask — HA will show a minimal media player card
     - async_turn_on() always transitions to "idle" (not "playing") since there is no media to resume
     - State can be set to any string via set_virtual_state(), but only standard MediaPlayerEntity
       states ("off", "idle", "playing", "paused", etc.) will integrate cleanly with HA UI
     """
 
     _attr_should_poll = False
+    _attr_supported_features: MediaPlayerEntityFeature = MediaPlayerEntityFeature.TURN_ON | MediaPlayerEntityFeature.TURN_OFF
 
     def __init__(self, unique_id: str, entity_id: str, state: str, attributes: dict[str, Any]) -> None:
         """Initialise the virtual media player entity.
@@ -325,7 +325,7 @@ class VirtualSelectEntity(SelectEntity):
         Args:
             unique_id: Unique ID for the entity registry entry.
             entity_id: Desired entity ID (e.g. 'select.house_mode').
-            state: Initial state string (must be one of the options, or 'unknown' if no options).
+            state: Initial state string. If not in the options list, it is automatically added.
             attributes: Initial extra attributes. May include 'options' (a list of strings).
                 If 'options' is not provided, defaults to ['unknown'].
         """
@@ -334,6 +334,8 @@ class VirtualSelectEntity(SelectEntity):
         self._attr_name = entity_id.split(".", 1)[1]
         self._virtual_state = state
         self._options: list[str] = list(attributes.get("options", ["unknown"]))
+        if state not in self._options:
+            self._options.append(state)
         self._virtual_attributes: dict[str, Any] = dict(attributes)
 
     @property
@@ -369,7 +371,7 @@ class VirtualSelectEntity(SelectEntity):
         """Update the entity state and optionally attributes, then push to HA.
 
         Args:
-            state: New state string (should be one of the available options).
+            state: New state string. If not in the current options list, it is automatically added.
             attributes: If provided, replaces all extra attributes. If it contains
                 a new 'options' list, self._options is updated accordingly.
         """
@@ -378,4 +380,6 @@ class VirtualSelectEntity(SelectEntity):
             if "options" in attributes:
                 self._options = list(attributes["options"])
             self._virtual_attributes = dict(attributes)
+        if state not in self._options:
+            self._options.append(state)
         self.async_write_ha_state()

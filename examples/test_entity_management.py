@@ -157,6 +157,8 @@ class TestCallHomeAssitantActions:
 
     def test_call_domain_specific_turn_on_and_off_actions(self, home_assistant: HomeAssistant) -> None:
         """Test calling a 'turn_on' action for a supported entity domain."""
+        # media_player transitions to "idle" on turn_on (not "on") since it has no media to play
+        expected_on_state = {"switch": "on", "light": "on", "media_player": "idle"}
         for domain in self.supported_domains:
             entity_id = f"{domain}.test_entity"
             home_assistant.given_an_entity(entity_id, state="off")
@@ -167,13 +169,13 @@ class TestCallHomeAssitantActions:
             # Call "Turn On" action
             home_assistant.call_action(domain, "turn_on", {"entity_id": entity_id})
 
-            # Verify the entity was turned on
-            home_assistant.assert_entity_state(entity_id, "on")
+            # Verify the entity was turned on (media_player goes to "idle" instead of "on")
+            home_assistant.assert_entity_state(entity_id, expected_on_state[domain])
 
             # Call "Turn Off" action
             home_assistant.call_action(domain, "turn_off", {"entity_id": entity_id})
 
-            # Verify the entity was turned on
+            # Verify the entity was turned off
             home_assistant.assert_entity_state(entity_id, "off")
 
 
