@@ -29,7 +29,7 @@ from ha_integration_test_harness import HomeAssistant
 
 class TestEntitiesManagedByTests:
 
-    supported_domains = ["sensor", "binary_sensor", "switch", "light"]
+    supported_domains = ["sensor", "binary_sensor", "switch", "light", "media_player", "select"]
     test_entities = [f"{domain}.per_test_entity" for domain in supported_domains]
 
     @pytest.fixture(autouse=True)
@@ -153,10 +153,12 @@ class TestPersistentEntities:
 class TestCallHomeAssitantActions:
 
     # Not all domains offer `turn_on`/`turn_off` action calls
-    supported_domains = ["switch", "light"]
+    supported_domains = ["switch", "light", "media_player"]
 
     def test_call_domain_specific_turn_on_and_off_actions(self, home_assistant: HomeAssistant) -> None:
         """Test calling a 'turn_on' action for a supported entity domain."""
+        # media_player transitions to "idle" on turn_on (not "on") since it has no media to play
+        expected_on_state = {"switch": "on", "light": "on", "media_player": "idle"}
         for domain in self.supported_domains:
             entity_id = f"{domain}.test_entity"
             home_assistant.given_an_entity(entity_id, state="off")
@@ -167,11 +169,73 @@ class TestCallHomeAssitantActions:
             # Call "Turn On" action
             home_assistant.call_action(domain, "turn_on", {"entity_id": entity_id})
 
-            # Verify the entity was turned on
-            home_assistant.assert_entity_state(entity_id, "on")
+            # Verify the entity was turned on (media_player goes to "idle" instead of "on")
+            home_assistant.assert_entity_state(entity_id, expected_on_state[domain])
 
             # Call "Turn Off" action
             home_assistant.call_action(domain, "turn_off", {"entity_id": entity_id})
 
-            # Verify the entity was turned on
+            # Verify the entity was turned off
             home_assistant.assert_entity_state(entity_id, "off")
+
+
+class TestMediaPlayerEntity:
+
+    def test_create_media_player_entity(self, home_assistant: HomeAssistant) -> None:
+        """Test that a media_player entity can be created via given_an_entity()."""
+        home_assistant.given_an_entity("media_player.test_tv", "off")
+        home_assistant.assert_entity_state("media_player.test_tv", "off")
+
+    def test_media_player_turn_on_off(self, home_assistant: HomeAssistant) -> None:
+        """Test that turn_on/turn_off actions transition media_player state correctly."""
+        home_assistant.given_an_entity("media_player.test_tv", "off")
+
+        home_assistant.call_action("media_player", "turn_on", {"entity_id": "media_player.test_tv"})
+        home_assistant.assert_entity_state("media_player.test_tv", "idle")
+
+        home_assistant.call_action("media_player", "turn_off", {"entity_id": "media_player.test_tv"})
+        home_assistant.assert_entity_state("media_player.test_tv", "off")
+
+    def test_media_player_set_arbitrary_state(self, home_assistant: HomeAssistant) -> None:
+        """Test that set_state() works for arbitrary media_player state strings."""
+        home_assistant.given_an_entity("media_player.test_tv", "off")
+
+        home_assistant.set_state("media_player.test_tv", "playing", {"media_title": "Test Song"})
+        home_assistant.assert_entity_state("media_player.test_tv", "playing", expected_attributes={"media_title": "Test Song"})
+
+        home_assistant.set_state("media_player.test_tv", "paused")
+        home_assistant.assert_entity_state("media_player.test_tv", "paused")
+
+
+class TestSelectEntity:
+
+    def test_create_select_entity_with_options(self, home_assistant: HomeAssistant) -> None:
+        """Test that a select entity can be created with options via given_an_entity()."""
+        home_assistant.given_an_entity(
+            "select.house_mode",
+            "Home",
+            attributes={"options": ["Home", "Away", "Night"]},
+        )
+        home_assistant.assert_entity_state("select.house_mode", "Home", expected_attributes={"options": ["Home", "Away", "Night"]})
+
+    def test_select_option_via_action(self, home_assistant: HomeAssistant) -> None:
+        """Test that select_option action changes the selected option."""
+        home_assistant.given_an_entity(
+            "select.house_mode",
+            "Home",
+            attributes={"options": ["Home", "Away", "Night"]},
+        )
+
+        home_assistant.call_action("select", "select_option", {"entity_id": "select.house_mode", "option": "Away"})
+        home_assistant.assert_entity_state("select.house_mode", "Away")
+
+    def test_select_options_accessible(self, home_assistant: HomeAssistant) -> None:
+        """Test that the options list is accessible in entity state attributes."""
+        home_assistant.given_an_entity(
+            "select.house_mode",
+            "Home",
+            attributes={"options": ["Home", "Away", "Night"]},
+        )
+        state = home_assistant.get_state("select.house_mode")
+        assert state is not None
+        assert state["attributes"]["options"] == ["Home", "Away", "Night"]

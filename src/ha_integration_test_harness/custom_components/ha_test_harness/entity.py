@@ -14,6 +14,8 @@ from typing import Any
 
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.components.light import ColorMode, LightEntity
+from homeassistant.components.media_player import MediaPlayerEntity, MediaPlayerEntityFeature
+from homeassistant.components.select import SelectEntity
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.entity import ToggleEntity
 
@@ -238,4 +240,146 @@ class VirtualLightEntity(LightEntity):
         if attributes is not None:
             self._virtual_attributes = dict(attributes)
             self._update_color_modes()
+        self.async_write_ha_state()
+
+
+class VirtualMediaPlayerEntity(MediaPlayerEntity):
+    """A virtual media player entity with programmatically controlled state.
+
+    Supports turn_on/turn_off actions and arbitrary state setting via set_virtual_state().
+    Known limitations:
+    - No play/pause, volume, mute, source, or media metadata support
+    - async_turn_on() always transitions to "idle" (not "playing") since there is no media to resume
+    - State can be set to any string via set_virtual_state(), but only standard MediaPlayerEntity
+      states ("off", "idle", "playing", "paused", etc.) will integrate cleanly with HA UI
+    """
+
+    _attr_should_poll = False
+    _attr_supported_features: MediaPlayerEntityFeature = MediaPlayerEntityFeature.TURN_ON | MediaPlayerEntityFeature.TURN_OFF
+
+    def __init__(self, unique_id: str, entity_id: str, state: str, attributes: dict[str, Any]) -> None:
+        """Initialise the virtual media player entity.
+
+        Args:
+            unique_id: Unique ID for the entity registry entry.
+            entity_id: Desired entity ID (e.g. 'media_player.living_room_tv').
+            state: Initial state string (e.g. 'off', 'idle', 'playing').
+            attributes: Initial extra attributes.
+        """
+        self._attr_unique_id = unique_id
+        self._attr_suggested_object_id = entity_id.split(".", 1)[1]
+        self._attr_name = entity_id.split(".", 1)[1]
+        self._is_on_state = state.lower() != "off"
+        self._virtual_state = state
+        self._virtual_attributes: dict[str, Any] = dict(attributes)
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return True if the media player is on."""
+        return self._is_on_state
+
+    @property
+    def state(self) -> str | None:
+        """Return the current media player state string."""
+        return self._virtual_state
+
+    @property
+    def extra_state_attributes(self) -> Mapping[str, Any] | None:
+        """Return extra state attributes (passthrough, like VirtualSensorEntity)."""
+        return self._virtual_attributes
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn the media player on, transitioning state to 'idle'."""
+        self._is_on_state = True
+        self._virtual_state = "idle"
+        self.async_write_ha_state()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn the media player off."""
+        self._is_on_state = False
+        self._virtual_state = "off"
+        self.async_write_ha_state()
+
+    def set_virtual_state(self, state: str, attributes: dict[str, Any] | None = None) -> None:
+        """Update the entity state and optionally attributes, then push to HA.
+
+        Args:
+            state: New state string (e.g. 'off', 'idle', 'playing').
+            attributes: If provided, replaces all extra attributes.
+        """
+        self._is_on_state = state.lower() != "off"
+        self._virtual_state = state
+        if attributes is not None:
+            self._virtual_attributes = dict(attributes)
+        self.async_write_ha_state()
+
+
+class VirtualSelectEntity(SelectEntity):
+    """A virtual select entity with programmatically controlled state and options."""
+
+    _attr_should_poll = False
+
+    def __init__(self, unique_id: str, entity_id: str, state: str, attributes: dict[str, Any]) -> None:
+        """Initialise the virtual select entity.
+
+        Args:
+            unique_id: Unique ID for the entity registry entry.
+            entity_id: Desired entity ID (e.g. 'select.house_mode').
+            state: Initial state string. If not in the options list, it is automatically added.
+            attributes: Initial extra attributes. May include 'options' (a list of strings).
+                If 'options' is not provided, defaults to ['unknown'].
+        """
+        self._attr_unique_id = unique_id
+        self._attr_suggested_object_id = entity_id.split(".", 1)[1]
+        self._attr_name = entity_id.split(".", 1)[1]
+        self._virtual_state = state
+        self._options: list[str] = list(attributes.get("options", ["unknown"]))
+        if state not in self._options:
+            self._options.append(state)
+        self._virtual_attributes: dict[str, Any] = dict(attributes)
+
+    @property
+    def current_option(self) -> str | None:
+        """Return the currently selected option."""
+        return self._virtual_state
+
+    @property
+    def options(self) -> list[str]:
+        """Return the list of available options."""
+        return self._options
+
+    @property
+    def extra_state_attributes(self) -> Mapping[str, Any] | None:
+        """Return extra state attributes (excluding the 'options' key, which is handled as a property)."""
+        return {k: v for k, v in self._virtual_attributes.items() if k != "options"}
+
+    async def async_select_option(self, option: str) -> None:
+        """Select an option.
+
+        Args:
+            option: The option string to select. Must be in self._options.
+
+        Raises:
+            ValueError: If the option is not in the options list.
+        """
+        if option not in self._options:
+            raise ValueError(f"Option {option!r} is not in the available options: {self._options}")
+        self._virtual_state = option
+        self.async_write_ha_state()
+
+    def set_virtual_state(self, state: str, attributes: dict[str, Any] | None = None) -> None:
+        """Update the entity state and optionally attributes, then push to HA.
+
+        Args:
+            state: New state string. If not in the current options list, it is automatically added.
+            attributes: If provided, replaces all extra attributes. If it contains
+                a new 'options' list, self._options is updated accordingly.
+        """
+        self._virtual_state = state
+        if attributes is not None:
+            if "options" in attributes:
+                self._options = list(attributes["options"])
+            self._virtual_attributes = dict(attributes)
+        if state not in self._options:
+            self._options.append(state)
         self.async_write_ha_state()
