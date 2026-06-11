@@ -173,7 +173,7 @@ integration. The entity is registered in the HA entity registry (it has a `uniqu
 and supports area/label assignment via `given_entity_has()`. The entity is tracked and automatically removed
 after the test function completes.
 
-Supported domains: `sensor`, `binary_sensor`, `switch`, `light`.
+Supported domains: `sensor`, `binary_sensor`, `switch`, `light`, `media_player`, `select`.
 
 - **entity_id**: Entity ID (e.g., `"sensor.test_temp"`). The domain prefix must be one of the supported domains listed above.
 - **state**: Initial state value (e.g., `"on"`, `"off"`, `"20.5"`)

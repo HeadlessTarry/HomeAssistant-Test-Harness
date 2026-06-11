@@ -302,7 +302,7 @@ class HomeAssistant:
         a WebSocket command. The entity is registered in the HA entity registry (it has a
         ``unique_id``), appears in the HA UI, and supports area/label assignment via
         ``given_entity_has()``. Supported domains: ``sensor``, ``binary_sensor``,
-        ``switch``, ``light``.
+        ``switch``, ``light``, ``media_player``, ``select``.
 
         If called a second time with the same ``entity_id``, the existing entity's state
         is updated in place (equivalent to calling ``set_state()``). The entity is tracked

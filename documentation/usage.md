@@ -432,7 +432,7 @@ def test_with_manual_cleanup(home_assistant):
 - **Use `given_an_entity()`**: For most test entities. Entities are registered in the entity registry
   (have a `unique_id`), appear in the HA UI, respond to service calls (`turn_on`, `turn_off`), and can be
   combined with `given_entity_has()` for area/label assignment.
-  Supported domains: `sensor`, `binary_sensor`, `switch`, `light`.
+  Supported domains: `sensor`, `binary_sensor`, `switch`, `light`, `media_player`, `select`.
 - **Use `set_state()`**: For raw state injection where registry registration is not needed — e.g. providing
   a synthetic sensor reading that an automation reads via a template. Entities created this way cannot be
   used with `given_entity_has()`.
