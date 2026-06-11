@@ -38,3 +38,6 @@ shared_data/
 # Package build artifacts
 *.egg
 *.whl
+
+# AI generated content
+docs/superpowers/
