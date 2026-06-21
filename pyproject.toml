@@ -42,7 +42,7 @@ dev = [
     "types-requests>=2.33.0.20260513",
     "types-python-dateutil",
     "types-PyYAML>=6.0.0",
-    "homeassistant-stubs>=2026.6.1",
+    "homeassistant-stubs>=2026.6.2",
     "build>=1.0.0"
 ]
 
