@@ -252,6 +252,7 @@ class VirtualMediaPlayerEntity(MediaPlayerEntity):
     """
 
     _attr_should_poll = False
+    _VOLUME_STEP: float = 0.1
     _attr_supported_features: MediaPlayerEntityFeature = (
         MediaPlayerEntityFeature.TURN_ON
         | MediaPlayerEntityFeature.TURN_OFF
@@ -288,6 +289,10 @@ class VirtualMediaPlayerEntity(MediaPlayerEntity):
         self._media_position: float | None = None
         self._volume_level: float | None = None
         self._is_volume_muted: bool = False
+        if "volume_level" in attributes:
+            self._volume_level = float(attributes["volume_level"])
+        if "is_volume_muted" in attributes:
+            self._is_volume_muted = bool(attributes["is_volume_muted"])
 
     @property
     def is_on(self) -> bool | None:
@@ -396,7 +401,27 @@ class VirtualMediaPlayerEntity(MediaPlayerEntity):
         self._media_position = position
         self.async_write_ha_state()
 
-    # --- Volume controls (Task 5) ---
+    async def async_set_volume_level(self, volume: float) -> None:
+        """Set volume level — clamped to 0.0-1.0."""
+        self._volume_level = max(0.0, min(1.0, volume))
+        self.async_write_ha_state()
+
+    async def async_volume_up(self) -> None:
+        """Increase volume by step — clamped to 1.0."""
+        current = self._volume_level if self._volume_level is not None else 0.0
+        self._volume_level = min(1.0, current + self._VOLUME_STEP)
+        self.async_write_ha_state()
+
+    async def async_volume_down(self) -> None:
+        """Decrease volume by step — clamped to 0.0."""
+        current = self._volume_level if self._volume_level is not None else 0.0
+        self._volume_level = max(0.0, current - self._VOLUME_STEP)
+        self.async_write_ha_state()
+
+    async def async_mute_volume(self, mute: bool) -> None:
+        """Mute or unmute the media player."""
+        self._is_volume_muted = mute
+        self.async_write_ha_state()
 
     def set_virtual_state(self, state: str, attributes: dict[str, Any] | None = None) -> None:
         """Update the entity state and optionally attributes, then push to HA.
@@ -417,6 +442,10 @@ class VirtualMediaPlayerEntity(MediaPlayerEntity):
                 self._media_track = attributes["media_track"]
             if "media_position" in attributes:
                 self._media_position = attributes["media_position"]
+            if "volume_level" in attributes:
+                self._volume_level = float(attributes["volume_level"])
+            if "is_volume_muted" in attributes:
+                self._is_volume_muted = bool(attributes["is_volume_muted"])
         self.async_write_ha_state()
 
 
