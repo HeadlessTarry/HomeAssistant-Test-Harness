@@ -81,11 +81,14 @@ class TestTransportControls:
 
         home_assistant.call_action("media_player", "media_stop", {"entity_id": "media_player.test_speaker"})
 
-        home_assistant.assert_entity_state("media_player.test_speaker", "idle")
-        state = home_assistant.get_state("media_player.test_speaker")
-        assert state is not None
-        assert state["attributes"].get("media_content_id") is None
-        assert state["attributes"].get("media_content_type") is None
+        home_assistant.assert_entity_state(
+            "media_player.test_speaker",
+            "idle",
+            expected_attributes={
+                "media_content_id": lambda v: v is None,
+                "media_content_type": lambda v: v is None,
+            },
+        )
 
     def test_media_play_pause_toggles(self, home_assistant: HomeAssistant) -> None:
         """Test that media_play_pause toggles between playing and paused."""
@@ -268,9 +271,11 @@ class TestEdgeCases:
             {"entity_id": "media_player.test_speaker", "volume_level": 1.5},
         )
 
-        state = home_assistant.get_state("media_player.test_speaker")
-        assert state is not None
-        assert state["attributes"]["volume_level"] == 1.0
+        home_assistant.assert_entity_state(
+            "media_player.test_speaker",
+            "playing",
+            expected_attributes={"volume_level": approx(1.0)},
+        )
 
     def test_volume_set_clamped_low(self, home_assistant: HomeAssistant) -> None:
         """Test that volume_set clamps to 0.0."""
@@ -282,6 +287,8 @@ class TestEdgeCases:
             {"entity_id": "media_player.test_speaker", "volume_level": -0.5},
         )
 
-        state = home_assistant.get_state("media_player.test_speaker")
-        assert state is not None
-        assert state["attributes"]["volume_level"] == 0.0
+        home_assistant.assert_entity_state(
+            "media_player.test_speaker",
+            "playing",
+            expected_attributes={"volume_level": approx(0.0)},
+        )
