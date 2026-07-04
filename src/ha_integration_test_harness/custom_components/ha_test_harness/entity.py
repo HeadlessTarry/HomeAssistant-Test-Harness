@@ -246,16 +246,27 @@ class VirtualLightEntity(LightEntity):
 class VirtualMediaPlayerEntity(MediaPlayerEntity):
     """A virtual media player entity with programmatically controlled state.
 
-    Supports turn_on/turn_off actions and arbitrary state setting via set_virtual_state().
-    Known limitations:
-    - No play/pause, volume, mute, source, or media metadata support
-    - async_turn_on() always transitions to "idle" (not "playing") since there is no media to resume
-    - State can be set to any string via set_virtual_state(), but only standard MediaPlayerEntity
-      states ("off", "idle", "playing", "paused", etc.) will integrate cleanly with HA UI
+    Supports turn_on/turn_off, playback transport (play_media, play, pause, stop,
+    play_pause, next_track, previous_track, seek), and volume (set, up, down, mute)
+    actions. State and attributes can be set directly via set_virtual_state().
     """
 
     _attr_should_poll = False
-    _attr_supported_features: MediaPlayerEntityFeature = MediaPlayerEntityFeature.TURN_ON | MediaPlayerEntityFeature.TURN_OFF
+    _VOLUME_STEP: float = 0.1
+    _attr_supported_features: MediaPlayerEntityFeature = (
+        MediaPlayerEntityFeature.TURN_ON
+        | MediaPlayerEntityFeature.TURN_OFF
+        | MediaPlayerEntityFeature.PLAY_MEDIA
+        | MediaPlayerEntityFeature.PAUSE
+        | MediaPlayerEntityFeature.STOP
+        | MediaPlayerEntityFeature.PLAY
+        | MediaPlayerEntityFeature.PREVIOUS_TRACK
+        | MediaPlayerEntityFeature.NEXT_TRACK
+        | MediaPlayerEntityFeature.SEEK
+        | MediaPlayerEntityFeature.VOLUME_SET
+        | MediaPlayerEntityFeature.VOLUME_STEP
+        | MediaPlayerEntityFeature.VOLUME_MUTE
+    )
 
     def __init__(self, unique_id: str, entity_id: str, state: str, attributes: dict[str, Any]) -> None:
         """Initialise the virtual media player entity.
@@ -272,6 +283,16 @@ class VirtualMediaPlayerEntity(MediaPlayerEntity):
         self._is_on_state = state.lower() != "off"
         self._virtual_state = state
         self._virtual_attributes: dict[str, Any] = dict(attributes)
+        self._media_content_id: str | None = None
+        self._media_content_type: str | None = None
+        self._media_track: int = 0
+        self._media_position: float | None = None
+        self._volume_level: float | None = None
+        self._is_volume_muted: bool = False
+        if "volume_level" in attributes:
+            self._volume_level = float(attributes["volume_level"])
+        if "is_volume_muted" in attributes:
+            self._is_volume_muted = bool(attributes["is_volume_muted"])
 
     @property
     def is_on(self) -> bool | None:
@@ -284,9 +305,33 @@ class VirtualMediaPlayerEntity(MediaPlayerEntity):
         return self._virtual_state
 
     @property
+    def volume_level(self) -> float | None:
+        """Return the volume level (0.0 to 1.0)."""
+        return self._volume_level
+
+    @property
+    def is_volume_muted(self) -> bool | None:
+        """Return True if the media player is muted."""
+        return self._is_volume_muted
+
+    @property
+    def media_content_id(self) -> str | None:
+        """Return the content ID currently playing."""
+        return self._media_content_id
+
+    @property
+    def media_content_type(self) -> str | None:
+        """Return the content type (e.g. music, video)."""
+        return self._media_content_type
+
+    @property
     def extra_state_attributes(self) -> Mapping[str, Any] | None:
-        """Return extra state attributes (passthrough, like VirtualSensorEntity)."""
-        return self._virtual_attributes
+        """Return extra state attributes including media track and position."""
+        attrs: dict[str, Any] = dict(self._virtual_attributes)
+        attrs["media_track"] = self._media_track
+        if self._media_position is not None:
+            attrs["media_position"] = self._media_position
+        return attrs
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the media player on, transitioning state to 'idle'."""
@@ -300,6 +345,84 @@ class VirtualMediaPlayerEntity(MediaPlayerEntity):
         self._virtual_state = "off"
         self.async_write_ha_state()
 
+    async def async_play_media(self, media_type: str, media_id: str, **kwargs: Any) -> None:
+        """Play media — auto-powers-on and transitions to 'playing'."""
+        self._is_on_state = True
+        self._virtual_state = "playing"
+        self._media_content_type = media_type
+        self._media_content_id = media_id
+        self._media_track = 0
+        self._media_position = None
+        self.async_write_ha_state()
+
+    async def async_media_play(self) -> None:
+        """Resume playback — no-op if off."""
+        if self._virtual_state in ("paused", "idle"):
+            self._virtual_state = "playing"
+            self.async_write_ha_state()
+
+    async def async_media_pause(self) -> None:
+        """Pause playback — no-op unless playing."""
+        if self._virtual_state == "playing":
+            self._virtual_state = "paused"
+            self.async_write_ha_state()
+
+    async def async_media_stop(self) -> None:
+        """Stop playback — transitions to idle and clears media metadata."""
+        if self._virtual_state in ("playing", "paused"):
+            self._virtual_state = "idle"
+            self._media_content_id = None
+            self._media_content_type = None
+            self._media_track = 0
+            self._media_position = None
+            self.async_write_ha_state()
+
+    async def async_media_play_pause(self) -> None:
+        """Toggle between play and pause — no-op if off."""
+        if self._virtual_state == "playing":
+            self._virtual_state = "paused"
+            self.async_write_ha_state()
+        elif self._virtual_state in ("paused", "idle"):
+            self._virtual_state = "playing"
+            self.async_write_ha_state()
+
+    async def async_media_next_track(self) -> None:
+        """Skip to next track — increments media_track attribute."""
+        self._media_track += 1
+        self.async_write_ha_state()
+
+    async def async_media_previous_track(self) -> None:
+        """Go to previous track — decrements media_track, clamped at 0."""
+        self._media_track = max(0, self._media_track - 1)
+        self.async_write_ha_state()
+
+    async def async_media_seek(self, position: float) -> None:
+        """Seek to position — sets media_position attribute."""
+        self._media_position = position
+        self.async_write_ha_state()
+
+    async def async_set_volume_level(self, volume: float) -> None:
+        """Set volume level — clamped to 0.0-1.0."""
+        self._volume_level = max(0.0, min(1.0, volume))
+        self.async_write_ha_state()
+
+    async def async_volume_up(self) -> None:
+        """Increase volume by step — clamped to 1.0."""
+        current = self._volume_level if self._volume_level is not None else 0.0
+        self._volume_level = min(1.0, current + self._VOLUME_STEP)
+        self.async_write_ha_state()
+
+    async def async_volume_down(self) -> None:
+        """Decrease volume by step — clamped to 0.0."""
+        current = self._volume_level if self._volume_level is not None else 0.0
+        self._volume_level = max(0.0, current - self._VOLUME_STEP)
+        self.async_write_ha_state()
+
+    async def async_mute_volume(self, mute: bool) -> None:
+        """Mute or unmute the media player."""
+        self._is_volume_muted = mute
+        self.async_write_ha_state()
+
     def set_virtual_state(self, state: str, attributes: dict[str, Any] | None = None) -> None:
         """Update the entity state and optionally attributes, then push to HA.
 
@@ -311,6 +434,18 @@ class VirtualMediaPlayerEntity(MediaPlayerEntity):
         self._virtual_state = state
         if attributes is not None:
             self._virtual_attributes = dict(attributes)
+            if "media_content_id" in attributes:
+                self._media_content_id = attributes["media_content_id"]
+            if "media_content_type" in attributes:
+                self._media_content_type = attributes["media_content_type"]
+            if "media_track" in attributes:
+                self._media_track = attributes["media_track"]
+            if "media_position" in attributes:
+                self._media_position = attributes["media_position"]
+            if "volume_level" in attributes:
+                self._volume_level = float(attributes["volume_level"])
+            if "is_volume_muted" in attributes:
+                self._is_volume_muted = bool(attributes["is_volume_muted"])
         self.async_write_ha_state()
 
 
