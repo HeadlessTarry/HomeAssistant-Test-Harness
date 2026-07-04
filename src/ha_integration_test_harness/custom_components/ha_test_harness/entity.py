@@ -285,7 +285,7 @@ class VirtualMediaPlayerEntity(MediaPlayerEntity):
         self._media_content_id: str | None = None
         self._media_content_type: str | None = None
         self._media_track: int = 0
-        self._media_position: int | None = None
+        self._media_position: float | None = None
         self._volume_level: float | None = None
         self._is_volume_muted: bool = False
 
@@ -391,7 +391,7 @@ class VirtualMediaPlayerEntity(MediaPlayerEntity):
         self._media_track = max(0, self._media_track - 1)
         self.async_write_ha_state()
 
-    async def async_media_seek(self, position: int) -> None:
+    async def async_media_seek(self, position: float) -> None:
         """Seek to position — sets media_position attribute."""
         self._media_position = position
         self.async_write_ha_state()
