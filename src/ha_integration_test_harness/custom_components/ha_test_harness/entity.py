@@ -368,6 +368,8 @@ class VirtualMediaPlayerEntity(MediaPlayerEntity):
             self._virtual_state = "idle"
             self._media_content_id = None
             self._media_content_type = None
+            self._media_track = 0
+            self._media_position = None
             self.async_write_ha_state()
 
     async def async_media_play_pause(self) -> None:
