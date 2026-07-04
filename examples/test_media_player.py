@@ -1,5 +1,7 @@
 """Tests for media player service call mocking."""
 
+from pytest import approx
+
 from ha_integration_test_harness import HomeAssistant
 
 
@@ -165,9 +167,11 @@ class TestVolumeControls:
             {"entity_id": "media_player.test_speaker", "volume_level": 0.5},
         )
 
-        state = home_assistant.get_state("media_player.test_speaker")
-        assert state is not None
-        assert state["attributes"]["volume_level"] == 0.5
+        home_assistant.assert_entity_state(
+            "media_player.test_speaker",
+            "playing",
+            expected_attributes={"volume_level": approx(0.5)},
+        )
 
     def test_volume_up(self, home_assistant: HomeAssistant) -> None:
         """Test that volume_up increases volume by 0.1."""
@@ -180,9 +184,11 @@ class TestVolumeControls:
 
         home_assistant.call_action("media_player", "volume_up", {"entity_id": "media_player.test_speaker"})
 
-        state = home_assistant.get_state("media_player.test_speaker")
-        assert state is not None
-        assert abs(state["attributes"]["volume_level"] - 0.6) < 0.01
+        home_assistant.assert_entity_state(
+            "media_player.test_speaker",
+            "playing",
+            expected_attributes={"volume_level": approx(0.6)},
+        )
 
     def test_volume_down(self, home_assistant: HomeAssistant) -> None:
         """Test that volume_down decreases volume by 0.1."""
@@ -195,9 +201,11 @@ class TestVolumeControls:
 
         home_assistant.call_action("media_player", "volume_down", {"entity_id": "media_player.test_speaker"})
 
-        state = home_assistant.get_state("media_player.test_speaker")
-        assert state is not None
-        assert abs(state["attributes"]["volume_level"] - 0.4) < 0.01
+        home_assistant.assert_entity_state(
+            "media_player.test_speaker",
+            "playing",
+            expected_attributes={"volume_level": approx(0.4)},
+        )
 
     def test_volume_mute(self, home_assistant: HomeAssistant) -> None:
         """Test that volume_mute updates is_volume_muted."""
@@ -209,9 +217,11 @@ class TestVolumeControls:
             {"entity_id": "media_player.test_speaker", "is_volume_muted": True},
         )
 
-        state = home_assistant.get_state("media_player.test_speaker")
-        assert state is not None
-        assert state["attributes"]["is_volume_muted"] is True
+        home_assistant.assert_entity_state(
+            "media_player.test_speaker",
+            "playing",
+            expected_attributes={"is_volume_muted": True},
+        )
 
     def test_volume_works_when_off(self, home_assistant: HomeAssistant) -> None:
         """Test that volume actions work when entity is off."""
@@ -223,10 +233,11 @@ class TestVolumeControls:
             {"entity_id": "media_player.test_speaker", "volume_level": 0.7},
         )
 
-        state = home_assistant.get_state("media_player.test_speaker")
-        assert state is not None
-        assert state["state"] == "off"
-        assert state["attributes"]["volume_level"] == 0.7
+        home_assistant.assert_entity_state(
+            "media_player.test_speaker",
+            "off",
+            expected_attributes={"volume_level": approx(0.7)},
+        )
 
 
 class TestEdgeCases:
