@@ -381,7 +381,20 @@ class VirtualMediaPlayerEntity(MediaPlayerEntity):
             self._virtual_state = "playing"
             self.async_write_ha_state()
 
-    # --- Track controls (Task 4) ---
+    async def async_media_next_track(self) -> None:
+        """Skip to next track — increments media_track attribute."""
+        self._media_track += 1
+        self.async_write_ha_state()
+
+    async def async_media_previous_track(self) -> None:
+        """Go to previous track — decrements media_track, clamped at 0."""
+        self._media_track = max(0, self._media_track - 1)
+        self.async_write_ha_state()
+
+    async def async_media_seek(self, position: int) -> None:
+        """Seek to position — sets media_position attribute."""
+        self._media_position = position
+        self.async_write_ha_state()
 
     # --- Volume controls (Task 5) ---
 
