@@ -350,7 +350,34 @@ class VirtualMediaPlayerEntity(MediaPlayerEntity):
         self._media_position = None
         self.async_write_ha_state()
 
-    # --- Transport controls (Task 3) ---
+    async def async_media_play(self) -> None:
+        """Resume playback — no-op if off."""
+        if self._virtual_state in ("paused", "idle"):
+            self._virtual_state = "playing"
+            self.async_write_ha_state()
+
+    async def async_media_pause(self) -> None:
+        """Pause playback — no-op unless playing."""
+        if self._virtual_state == "playing":
+            self._virtual_state = "paused"
+            self.async_write_ha_state()
+
+    async def async_media_stop(self) -> None:
+        """Stop playback — transitions to idle and clears media metadata."""
+        if self._virtual_state in ("playing", "paused"):
+            self._virtual_state = "idle"
+            self._media_content_id = None
+            self._media_content_type = None
+            self.async_write_ha_state()
+
+    async def async_media_play_pause(self) -> None:
+        """Toggle between play and pause — no-op if off."""
+        if self._virtual_state == "playing":
+            self._virtual_state = "paused"
+            self.async_write_ha_state()
+        elif self._virtual_state in ("paused", "idle"):
+            self._virtual_state = "playing"
+            self.async_write_ha_state()
 
     # --- Track controls (Task 4) ---
 
