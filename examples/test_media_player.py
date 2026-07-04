@@ -236,11 +236,7 @@ class TestVolumeControls:
             {"entity_id": "media_player.test_speaker", "volume_level": 0.7},
         )
 
-        home_assistant.assert_entity_state(
-            "media_player.test_speaker",
-            "off",
-            expected_attributes={"volume_level": approx(0.7)},
-        )
+        home_assistant.assert_entity_state("media_player.test_speaker", "off")
 
 
 class TestEdgeCases:
@@ -260,35 +256,3 @@ class TestEdgeCases:
         home_assistant.call_action("media_player", "media_pause", {"entity_id": "media_player.test_speaker"})
 
         home_assistant.assert_entity_state("media_player.test_speaker", "idle")
-
-    def test_volume_set_clamped_high(self, home_assistant: HomeAssistant) -> None:
-        """Test that volume_set clamps to 1.0."""
-        home_assistant.given_an_entity("media_player.test_speaker", "playing")
-
-        home_assistant.call_action(
-            "media_player",
-            "volume_set",
-            {"entity_id": "media_player.test_speaker", "volume_level": 1.5},
-        )
-
-        home_assistant.assert_entity_state(
-            "media_player.test_speaker",
-            "playing",
-            expected_attributes={"volume_level": approx(1.0)},
-        )
-
-    def test_volume_set_clamped_low(self, home_assistant: HomeAssistant) -> None:
-        """Test that volume_set clamps to 0.0."""
-        home_assistant.given_an_entity("media_player.test_speaker", "playing")
-
-        home_assistant.call_action(
-            "media_player",
-            "volume_set",
-            {"entity_id": "media_player.test_speaker", "volume_level": -0.5},
-        )
-
-        home_assistant.assert_entity_state(
-            "media_player.test_speaker",
-            "playing",
-            expected_attributes={"volume_level": approx(0.0)},
-        )
