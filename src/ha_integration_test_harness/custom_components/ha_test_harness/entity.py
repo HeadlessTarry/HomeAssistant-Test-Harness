@@ -346,6 +346,8 @@ class VirtualMediaPlayerEntity(MediaPlayerEntity):
         self._virtual_state = "playing"
         self._media_content_type = media_type
         self._media_content_id = media_id
+        self._media_track = 0
+        self._media_position = None
         self.async_write_ha_state()
 
     # --- Transport controls (Task 3) ---
@@ -365,6 +367,14 @@ class VirtualMediaPlayerEntity(MediaPlayerEntity):
         self._virtual_state = state
         if attributes is not None:
             self._virtual_attributes = dict(attributes)
+            if "media_content_id" in attributes:
+                self._media_content_id = attributes["media_content_id"]
+            if "media_content_type" in attributes:
+                self._media_content_type = attributes["media_content_type"]
+            if "media_track" in attributes:
+                self._media_track = attributes["media_track"]
+            if "media_position" in attributes:
+                self._media_position = attributes["media_position"]
         self.async_write_ha_state()
 
 
