@@ -13,7 +13,7 @@ from decimal import Decimal
 from typing import Any
 
 from homeassistant.components.binary_sensor import BinarySensorEntity
-from homeassistant.components.light import ColorMode, LightEntity
+from homeassistant.components.light import ColorMode, LightEntity, LightEntityFeature
 from homeassistant.components.media_player import MediaPlayerEntity, MediaPlayerEntityFeature
 from homeassistant.components.select import SelectEntity
 from homeassistant.components.sensor import SensorEntity
@@ -160,9 +160,11 @@ class VirtualToggleEntity(ToggleEntity):
 
 
 class VirtualLightEntity(LightEntity):
-    """A virtual light entity with brightness and colour temperature support."""
+    """A virtual light entity with full HA light contract support."""
 
     _attr_should_poll = False
+    _attr_supported_color_modes = {ColorMode.COLOR_TEMP, ColorMode.HS, ColorMode.RGB, ColorMode.XY}
+    _attr_supported_features = LightEntityFeature.TRANSITION | LightEntityFeature.FLASH | LightEntityFeature.EFFECT
 
     def __init__(self, unique_id: str, entity_id: str, state: str, attributes: dict[str, Any]) -> None:
         """Initialise the virtual light entity.
@@ -171,27 +173,37 @@ class VirtualLightEntity(LightEntity):
             unique_id: Unique ID for the entity registry entry.
             entity_id: Desired entity ID (e.g. 'light.test_lamp').
             state: Initial state string ('on' or 'off').
-            attributes: Initial extra attributes. May include 'brightness' (0-255)
-                and/or 'color_temp_kelvin'.
+            attributes: Initial extra attributes. May include light-specific keys:
+                brightness, color_temp_kelvin, hs_color, rgb_color, rgbw_color,
+                rgbww_color, xy_color, effect, effect_list, flash, transition.
         """
         self._attr_unique_id = unique_id
         self._attr_suggested_object_id = entity_id.split(".", 1)[1]
         self._attr_name = entity_id.split(".", 1)[1]
         self._is_on_state = state.lower() == "on"
         self._virtual_attributes: dict[str, Any] = dict(attributes)
-        self._update_color_modes()
+        self._current_color_mode: ColorMode | None = None
+        self._update_color_mode()
 
-    def _update_color_modes(self) -> None:
-        """Derive supported_color_modes and color_mode from current attributes."""
-        if "color_temp_kelvin" in self._virtual_attributes:
-            self._attr_supported_color_modes = {ColorMode.COLOR_TEMP}
-            self._attr_color_mode = ColorMode.COLOR_TEMP
-        elif "brightness" in self._virtual_attributes:
-            self._attr_supported_color_modes = {ColorMode.BRIGHTNESS}
-            self._attr_color_mode = ColorMode.BRIGHTNESS
+    def _update_color_mode(self) -> None:
+        """Update color_mode based on the most recently set attribute."""
+        if not self._is_on_state:
+            self._current_color_mode = None
+            return
+        if "xy_color" in self._virtual_attributes and self._virtual_attributes["xy_color"] is not None:
+            self._current_color_mode = ColorMode.XY
+        elif "rgbww_color" in self._virtual_attributes and self._virtual_attributes["rgbww_color"] is not None:
+            self._current_color_mode = ColorMode.RGBWW
+        elif "rgbw_color" in self._virtual_attributes and self._virtual_attributes["rgbw_color"] is not None:
+            self._current_color_mode = ColorMode.RGBW
+        elif "rgb_color" in self._virtual_attributes and self._virtual_attributes["rgb_color"] is not None:
+            self._current_color_mode = ColorMode.RGB
+        elif "hs_color" in self._virtual_attributes and self._virtual_attributes["hs_color"] is not None:
+            self._current_color_mode = ColorMode.HS
+        elif "color_temp_kelvin" in self._virtual_attributes and self._virtual_attributes["color_temp_kelvin"] is not None:
+            self._current_color_mode = ColorMode.COLOR_TEMP
         else:
-            self._attr_supported_color_modes = {ColorMode.ONOFF}
-            self._attr_color_mode = ColorMode.ONOFF
+            self._current_color_mode = ColorMode.COLOR_TEMP
 
     @property
     def is_on(self) -> bool | None:
@@ -209,23 +221,67 @@ class VirtualLightEntity(LightEntity):
         return self._virtual_attributes.get("color_temp_kelvin")
 
     @property
+    def color_mode(self) -> ColorMode | None:
+        """Return the current color mode."""
+        return self._current_color_mode
+
+    @property
+    def hs_color(self) -> tuple[float, float] | None:
+        """Return the hue and saturation color value [float, float]."""
+        return self._virtual_attributes.get("hs_color")
+
+    @property
+    def rgb_color(self) -> tuple[int, int, int] | None:
+        """Return the rgb color value [int, int, int]."""
+        return self._virtual_attributes.get("rgb_color")
+
+    @property
+    def rgbw_color(self) -> tuple[int, int, int, int] | None:
+        """Return the rgbw color value [int, int, int, int]."""
+        return self._virtual_attributes.get("rgbw_color")
+
+    @property
+    def rgbww_color(self) -> tuple[int, int, int, int, int] | None:
+        """Return the rgbww color value [int, int, int, int, int]."""
+        return self._virtual_attributes.get("rgbww_color")
+
+    @property
+    def xy_color(self) -> tuple[float, float] | None:
+        """Return the xy color value [float, float]."""
+        return self._virtual_attributes.get("xy_color")
+
+    @property
+    def effect(self) -> str | None:
+        """Return the current effect."""
+        return self._virtual_attributes.get("effect")
+
+    @property
+    def effect_list(self) -> list[str] | None:
+        """Return the list of supported effects."""
+        return self._virtual_attributes.get("effect_list")
+
+    @property
     def extra_state_attributes(self) -> Mapping[str, Any] | None:
         """Return extra state attributes (excluding light-specific keys handled as properties)."""
-        return {k: v for k, v in self._virtual_attributes.items() if k not in ("brightness", "color_temp_kelvin")}
+        light_keys = {"brightness", "color_temp_kelvin", "hs_color", "rgb_color", "rgbw_color", "rgbww_color", "xy_color", "effect", "effect_list", "flash", "transition"}
+        return {k: v for k, v in self._virtual_attributes.items() if k not in light_keys}
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn the light on, optionally updating brightness/colour temperature."""
+        """Turn the light on, handling all supported attributes."""
         self._is_on_state = True
-        if "brightness" in kwargs:
-            self._virtual_attributes["brightness"] = kwargs["brightness"]
-        if "color_temp_kelvin" in kwargs:
-            self._virtual_attributes["color_temp_kelvin"] = kwargs["color_temp_kelvin"]
-        self._update_color_modes()
+        for key in ["brightness", "color_temp_kelvin", "hs_color", "rgb_color", "rgbw_color", "rgbww_color", "xy_color", "effect", "flash", "transition"]:
+            if key in kwargs:
+                self._virtual_attributes[key] = kwargs[key]
+        self._update_color_mode()
         self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn the light off."""
+        """Turn the light off, handling transition and flash."""
         self._is_on_state = False
+        for key in ["transition", "flash"]:
+            if key in kwargs:
+                self._virtual_attributes[key] = kwargs[key]
+        self._update_color_mode()
         self.async_write_ha_state()
 
     def set_virtual_state(self, state: str, attributes: dict[str, Any] | None = None) -> None:
@@ -234,12 +290,12 @@ class VirtualLightEntity(LightEntity):
         Args:
             state: New state string ('on' or 'off').
             attributes: If provided, replaces all extra attributes. May include
-                'brightness' and/or 'color_temp_kelvin'.
+                light-specific keys (brightness, color_temp_kelvin, hs_color, etc.).
         """
         self._is_on_state = state.lower() == "on"
         if attributes is not None:
             self._virtual_attributes = dict(attributes)
-            self._update_color_modes()
+        self._update_color_mode()
         self.async_write_ha_state()
 
 

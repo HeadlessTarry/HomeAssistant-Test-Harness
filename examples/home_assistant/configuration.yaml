@@ -27,6 +27,10 @@ template:
       - name: Current Datetime
         state: "{{ now().replace(microsecond=0).isoformat() }}"
 
+input_button:
+  turn_on_brightness_light:
+    name: "Turn on brightness light"
+
 automation:
   # Turns on all lights labelled 'test_label_target' when the label automation
   # trigger button is pressed. Used by label-management example tests.
@@ -55,6 +59,20 @@ automation:
       - action: light.turn_on
         target:
           entity_id: "{{ area_entities('test_room') }}"
+
+  # Test automation: turns on light with brightness_pct when trigger button is pressed.
+  # Used by test_light.py to verify brightness_pct is applied to light entities.
+  - id: test_light_brightness_pct
+    alias: "Test - Light brightness_pct"
+    trigger:
+      - platform: state
+        entity_id: input_button.turn_on_brightness_light
+    action:
+      - action: light.turn_on
+        data:
+          brightness_pct: 10
+        target:
+          entity_id: light.test_brightness_auto
 
   # Performance test infrastructure: introduces a 1-second delay whenever one of the
   # reserved 'perf_test' sensor entities changes state.
