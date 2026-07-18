@@ -19,6 +19,31 @@ from homeassistant.components.select import SelectEntity
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.entity import ToggleEntity
 
+_LIGHT_STATE_KEYS: frozenset[str] = frozenset(
+    {
+        "brightness",
+        "color_temp_kelvin",
+        "hs_color",
+        "rgb_color",
+        "rgbw_color",
+        "rgbww_color",
+        "xy_color",
+        "effect",
+        "effect_list",
+        "flash",
+        "transition",
+    }
+)
+
+_COLOR_ATTR_TO_MODE: dict[str, ColorMode] = {
+    "xy_color": ColorMode.XY,
+    "rgbww_color": ColorMode.RGBWW,
+    "rgbw_color": ColorMode.RGBW,
+    "rgb_color": ColorMode.RGB,
+    "hs_color": ColorMode.HS,
+    "color_temp_kelvin": ColorMode.COLOR_TEMP,
+}
+
 
 class VirtualSensorEntity(SensorEntity):
     """A virtual sensor entity with programmatically controlled state."""
@@ -163,7 +188,7 @@ class VirtualLightEntity(LightEntity):
     """A virtual light entity with full HA light contract support."""
 
     _attr_should_poll = False
-    _attr_supported_color_modes = {ColorMode.COLOR_TEMP, ColorMode.HS, ColorMode.RGB, ColorMode.XY}
+    _attr_supported_color_modes = {ColorMode.COLOR_TEMP, ColorMode.HS, ColorMode.RGB, ColorMode.RGBW, ColorMode.RGBWW, ColorMode.XY}
     _attr_supported_features = LightEntityFeature.TRANSITION | LightEntityFeature.FLASH | LightEntityFeature.EFFECT
 
     def __init__(self, unique_id: str, entity_id: str, state: str, attributes: dict[str, Any]) -> None:
@@ -203,6 +228,9 @@ class VirtualLightEntity(LightEntity):
         elif "color_temp_kelvin" in self._virtual_attributes and self._virtual_attributes["color_temp_kelvin"] is not None:
             self._current_color_mode = ColorMode.COLOR_TEMP
         else:
+            # COLOR_TEMP is the default when light is on but no color attribute is set.
+            # HA requires a non-None color_mode when is_on is True. COLOR_TEMP implies
+            # brightness support and doesn't misrepresent the light's state.
             self._current_color_mode = ColorMode.COLOR_TEMP
 
     @property
@@ -263,25 +291,30 @@ class VirtualLightEntity(LightEntity):
     @property
     def extra_state_attributes(self) -> Mapping[str, Any] | None:
         """Return extra state attributes (excluding light-specific keys handled as properties)."""
-        light_keys = {"brightness", "color_temp_kelvin", "hs_color", "rgb_color", "rgbw_color", "rgbww_color", "xy_color", "effect", "effect_list", "flash", "transition"}
-        return {k: v for k, v in self._virtual_attributes.items() if k not in light_keys}
+        return {k: v for k, v in self._virtual_attributes.items() if k not in _LIGHT_STATE_KEYS}
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the light on, handling all supported attributes."""
         self._is_on_state = True
-        for key in ["brightness", "color_temp_kelvin", "hs_color", "rgb_color", "rgbw_color", "rgbww_color", "xy_color", "effect", "flash", "transition"]:
+        for key in _LIGHT_STATE_KEYS:
             if key in kwargs:
                 self._virtual_attributes[key] = kwargs[key]
-        self._update_color_mode()
+        for attr, mode in _COLOR_ATTR_TO_MODE.items():
+            if attr in kwargs:
+                self._current_color_mode = mode
+                break
+        else:
+            if self._current_color_mode is None:
+                self._current_color_mode = ColorMode.COLOR_TEMP
         self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the light off, handling transition and flash."""
         self._is_on_state = False
+        self._current_color_mode = None
         for key in ["transition", "flash"]:
             if key in kwargs:
                 self._virtual_attributes[key] = kwargs[key]
-        self._update_color_mode()
         self.async_write_ha_state()
 
     def set_virtual_state(self, state: str, attributes: dict[str, Any] | None = None) -> None:

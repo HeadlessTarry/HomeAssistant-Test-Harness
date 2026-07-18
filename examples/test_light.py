@@ -45,31 +45,69 @@ class TestLightColorModes:
     """Test color mode attribute handling."""
 
     def test_light_turn_on_with_color_temp_kelvin(self, home_assistant: HomeAssistant) -> None:
-        """Test that light.turn_on with color_temp_kelvin sets the attribute."""
+        """Test that light.turn_on with color_temp_kelvin sets the attribute and color_mode."""
         light_entity = "light.test_color_temp"
         home_assistant.given_an_entity(light_entity, state="off")
 
         home_assistant.call_action("light", "turn_on", {"entity_id": light_entity, "color_temp_kelvin": 4000})
 
-        home_assistant.assert_entity_state(light_entity, expected_state="on", expected_attributes={"color_temp_kelvin": 4000})
+        home_assistant.assert_entity_state(
+            light_entity,
+            expected_state="on",
+            expected_attributes={"color_temp_kelvin": 4000, "color_mode": "color_temp"},
+        )
 
     def test_light_turn_on_with_hs_color(self, home_assistant: HomeAssistant) -> None:
-        """Test that light.turn_on with hs_color sets the attribute."""
+        """Test that light.turn_on with hs_color sets the attribute and color_mode."""
         light_entity = "light.test_hs_color"
         home_assistant.given_an_entity(light_entity, state="off")
 
         home_assistant.call_action("light", "turn_on", {"entity_id": light_entity, "hs_color": (180.0, 50.0)})
 
-        home_assistant.assert_entity_state(light_entity, expected_state="on", expected_attributes={"hs_color": (180.0, 50.0)})
+        home_assistant.assert_entity_state(
+            light_entity,
+            expected_state="on",
+            expected_attributes={"hs_color": (180.0, 50.0), "color_mode": "hs"},
+        )
 
     def test_light_turn_on_with_rgb_color(self, home_assistant: HomeAssistant) -> None:
-        """Test that light.turn_on with rgb_color sets the attribute."""
+        """Test that light.turn_on with rgb_color sets the attribute and color_mode."""
         light_entity = "light.test_rgb_color"
         home_assistant.given_an_entity(light_entity, state="off")
 
         home_assistant.call_action("light", "turn_on", {"entity_id": light_entity, "rgb_color": (255, 128, 0)})
 
-        home_assistant.assert_entity_state(light_entity, expected_state="on", expected_attributes={"rgb_color": (255, 128, 0)})
+        home_assistant.assert_entity_state(
+            light_entity,
+            expected_state="on",
+            expected_attributes={"rgb_color": (255, 128, 0), "color_mode": "rgb"},
+        )
+
+    def test_light_turn_on_with_rgbw_color(self, home_assistant: HomeAssistant) -> None:
+        """Test that light.turn_on with rgbw_color sets the attribute and color_mode."""
+        light_entity = "light.test_rgbw_color"
+        home_assistant.given_an_entity(light_entity, state="off")
+
+        home_assistant.call_action("light", "turn_on", {"entity_id": light_entity, "rgbw_color": (255, 128, 0, 64)})
+
+        home_assistant.assert_entity_state(
+            light_entity,
+            expected_state="on",
+            expected_attributes={"rgbw_color": (255, 128, 0, 64), "color_mode": "rgbw"},
+        )
+
+    def test_light_turn_on_with_rgbww_color(self, home_assistant: HomeAssistant) -> None:
+        """Test that light.turn_on with rgbww_color sets the attribute and color_mode."""
+        light_entity = "light.test_rgbww_color"
+        home_assistant.given_an_entity(light_entity, state="off")
+
+        home_assistant.call_action("light", "turn_on", {"entity_id": light_entity, "rgbww_color": (255, 128, 0, 64, 32)})
+
+        home_assistant.assert_entity_state(
+            light_entity,
+            expected_state="on",
+            expected_attributes={"rgbww_color": (255, 128, 0, 64, 32), "color_mode": "rgbww"},
+        )
 
     def test_light_turn_on_with_xy_color(self, home_assistant: HomeAssistant) -> None:
         """Test that light.turn_on with xy_color sets the attribute."""
