@@ -67,7 +67,7 @@ class TestLightColorModes:
         home_assistant.assert_entity_state(
             light_entity,
             expected_state="on",
-            expected_attributes={"hs_color": (180.0, 50.0), "color_mode": "hs"},
+            expected_attributes={"hs_color": [180.0, 50.0], "color_mode": "hs"},
         )
 
     def test_light_turn_on_with_rgb_color(self, home_assistant: HomeAssistant) -> None:
@@ -80,7 +80,7 @@ class TestLightColorModes:
         home_assistant.assert_entity_state(
             light_entity,
             expected_state="on",
-            expected_attributes={"rgb_color": (255, 128, 0), "color_mode": "rgb"},
+            expected_attributes={"rgb_color": [255, 128, 0], "color_mode": "rgb"},
         )
 
     def test_light_turn_on_with_rgbw_color(self, home_assistant: HomeAssistant) -> None:
@@ -93,7 +93,7 @@ class TestLightColorModes:
         home_assistant.assert_entity_state(
             light_entity,
             expected_state="on",
-            expected_attributes={"rgbw_color": (255, 128, 0, 64), "color_mode": "rgbw"},
+            expected_attributes={"rgbw_color": [255, 128, 0, 64], "color_mode": "rgbw"},
         )
 
     def test_light_turn_on_with_rgbww_color(self, home_assistant: HomeAssistant) -> None:
@@ -106,7 +106,7 @@ class TestLightColorModes:
         home_assistant.assert_entity_state(
             light_entity,
             expected_state="on",
-            expected_attributes={"rgbww_color": (255, 128, 0, 64, 32), "color_mode": "rgbww"},
+            expected_attributes={"rgbww_color": [255, 128, 0, 64, 32], "color_mode": "rgbww"},
         )
 
     def test_light_turn_on_with_xy_color(self, home_assistant: HomeAssistant) -> None:
@@ -116,7 +116,7 @@ class TestLightColorModes:
 
         home_assistant.call_action("light", "turn_on", {"entity_id": light_entity, "xy_color": (0.3, 0.5)})
 
-        home_assistant.assert_entity_state(light_entity, expected_state="on", expected_attributes={"xy_color": (0.3, 0.5)})
+        home_assistant.assert_entity_state(light_entity, expected_state="on", expected_attributes={"xy_color": [0.3, 0.5]})
 
     def test_light_cross_format_derivation(self, home_assistant: HomeAssistant) -> None:
         """Test that setting hs_color derives rgb_color and xy_color via HA state_attributes."""
@@ -184,4 +184,4 @@ class TestLightSetVirtualState:
 
         home_assistant.set_state(light_entity, "on", {"hs_color": (240.0, 75.0)})
 
-        home_assistant.assert_entity_state(light_entity, expected_state="on", expected_attributes={"hs_color": (240.0, 75.0)})
+        home_assistant.assert_entity_state(light_entity, expected_state="on", expected_attributes={"hs_color": [240.0, 75.0]})
