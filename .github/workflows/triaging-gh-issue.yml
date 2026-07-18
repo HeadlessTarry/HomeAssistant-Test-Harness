@@ -35,6 +35,13 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: ⚙️ Configure OpenCode permissions
+        run: |
+          mkdir -p ~/.config/opencode
+          cat > ~/.config/opencode/opencode.json << 'EOF'
+          {"$schema":"https://opencode.ai/config.json","permission":{"external_directory":{"/tmp/*":"allow"}}}
+          EOF
+
       - name: ✨ Run OpenCode
         uses: anomalyco/opencode/github@b1fc8113948b518835c2a39ece49553cffe9b30c # v1.17.18
         env:
