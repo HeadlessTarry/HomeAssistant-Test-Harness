@@ -49,5 +49,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           model: ${{ vars.OPENCODE_MODEL || 'opencode-go/qwen3.7-plus' }}
+          share: false
           prompt: |
             Use the triaging-gh-issue skill to triage issue ${{ github.event.issue.number || inputs.issue_number }}.
