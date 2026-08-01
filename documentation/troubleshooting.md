@@ -218,13 +218,29 @@ guards against this due to potential complications with manipulating fake time.
 - Home Assistant not starting properly
 - Health checks not passing
 - Polling for state that never changes
+- Docker container becoming unresponsive mid-suite
+
+**Fail-fast behavior:**
+
+When a request to Home Assistant times out (10s for HTTP requests, 10s for WebSocket commands),
+the harness automatically checks whether the API is still responsive via a lightweight health probe
+(3s timeout on `GET /api/`). If the health check confirms Home Assistant is unreachable:
+
+1. Container diagnostics are captured and logged (docker stats, container logs, network reachability)
+2. The `is_unresponsive` flag is set on the `HomeAssistant` client
+3. All remaining tests are **skipped** (reported as `SKIPPED` with reason "Home Assistant is unresponsive")
+4. Per-test entity cleanup is **suppressed** (futile when the API is down)
+
+This converts a potential ~50 minute cascade of timeout errors into a ~1-2 minute fast failure with
+a clear report: 1 failed test + N skipped tests.
 
 **Solution:**
 
 1. Check timeout values in `assert_entity_state()` calls
-2. Review container diagnostics in test output
+2. Review container diagnostics in test output for the root cause
 3. Run with pytest verbose mode: `pytest -v`
 4. Check Home Assistant logs in container
+5. If the issue is intermittent, check Docker resource limits (CPU/memory) on your CI runner
 
 ### Permission Denied (Linux)
 

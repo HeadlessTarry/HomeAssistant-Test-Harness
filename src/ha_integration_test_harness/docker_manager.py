@@ -718,10 +718,10 @@ class DockerComposeManager:
             if ha_container and ha_container.url:
                 logs.append("\n========== NETWORK REACHABILITY ==========")
                 try:
-                    response = requests.get(f"{ha_container.url}/api/", timeout=5)
+                    response = requests.get(f"{ha_container.url}/api/", timeout=10)
                     logs.append(f"Home Assistant API reachable: HTTP {response.status_code}")
                 except requests.Timeout:
-                    logs.append("Home Assistant API UNREACHABLE: Request timed out after 5s")
+                    logs.append("Home Assistant API UNREACHABLE: Request timed out after 10s")
                 except requests.ConnectionError:
                     logs.append("Home Assistant API UNREACHABLE: Connection refused")
                 except Exception as e:

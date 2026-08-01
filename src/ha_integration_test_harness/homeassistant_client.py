@@ -13,6 +13,8 @@ from .exceptions import HomeAssistantClientError, HomeAssistantTimeoutError
 
 logger = logging.getLogger(__name__)
 
+_HEALTH_CHECK_TIMEOUT = 3
+
 # Sentinel object used to distinguish "not provided" from ``None`` in optional parameters.
 # Typed as ``Any`` so mypy accepts it as a default for parameters typed ``Optional[str]``
 # or ``Optional[list[str]]`` without raising an incompatible-default-value error.
@@ -41,6 +43,16 @@ class HomeAssistant:
         self._entity_original_config: dict[str, dict[str, Any]] = {}
         self._known_area_ids: Optional[set[str]] = None
         self._known_label_ids: Optional[set[str]] = None
+        self._is_unresponsive: bool = False
+
+    @property
+    def is_unresponsive(self) -> bool:
+        """Whether Home Assistant has been confirmed unresponsive.
+
+        Set to ``True`` after ``check_health()`` determines the API is unreachable.
+        Once set, the pytest plugin skips remaining tests and suppresses futile cleanup.
+        """
+        return self._is_unresponsive
 
     def set_state(self, entity_id: str, state: str, attributes: Optional[dict[str, Any]] = None) -> None:
         """Set the state and/or attributes of a Home Assistant entity.
@@ -312,6 +324,32 @@ class HomeAssistant:
         except requests.RequestException as e:
             raise HomeAssistantClientError(f"Failed to call action {domain}.{action} at {url}: {e}")
 
+    def check_health(self) -> bool:
+        """Check whether Home Assistant is responsive.
+
+        Sends a lightweight ``GET /api/`` request with a 3-second timeout.
+        Returns ``True`` if the API responds (HTTP 200 or 401), ``False`` otherwise.
+        On failure, sets ``_is_unresponsive`` to ``True`` so the pytest plugin can
+        skip remaining tests and suppress futile cleanup.
+
+        This method never raises — it is purely diagnostic, but has the side-effect
+        of marking the client as unresponsive on failure.
+
+        Returns:
+            ``True`` if Home Assistant is responsive, ``False`` if unreachable.
+        """
+        url = f"{self._base_url}/api/"
+        try:
+            headers = {"Authorization": f"Bearer {self._access_token}"}
+            response = requests.get(url, headers=headers, timeout=_HEALTH_CHECK_TIMEOUT)
+            if response.status_code in (200, 401):
+                return True
+            self._is_unresponsive = True
+            return False
+        except requests.RequestException:
+            self._is_unresponsive = True
+            return False
+
     def given_an_entity(self, entity_id: str, state: str, attributes: Optional[dict[str, Any]] = None) -> None:
         """Create a fully-registered entity for testing purposes with automatic cleanup.
 
@@ -371,6 +409,7 @@ class HomeAssistant:
             The response message dict returned by Home Assistant.
 
         Raises:
+            HomeAssistantTimeoutError: If the WebSocket connection or command times out.
             HomeAssistantClientError: If the connection, authentication, or command fails.
         """
         ws_parsed = urlparse(self._base_url)
@@ -409,6 +448,8 @@ class HomeAssistant:
             ws.send(json.dumps(payload))
             response: dict[str, Any] = json.loads(ws.recv())
             return response
+        except websocket.WebSocketTimeoutException as e:
+            raise HomeAssistantTimeoutError(f"Home Assistant request timed out: WebSocket error communicating with Home Assistant at {ws_url}: {e}")
         except websocket.WebSocketException as e:
             raise HomeAssistantClientError(f"WebSocket error communicating with Home Assistant at {ws_url}: {e}")
         finally:

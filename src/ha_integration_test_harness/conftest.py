@@ -18,29 +18,33 @@ logger = logging.getLogger(__name__)
 _diagnostics_captured = False
 _failure_key: pytest.StashKey[bool] = pytest.StashKey()
 _docker_manager_key: pytest.StashKey[Optional[DockerComposeManager]] = pytest.StashKey()
+_home_assistant_key: pytest.StashKey[Optional[HomeAssistant]] = pytest.StashKey()
 
 
 def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[Any]) -> None:
     """Pytest hook to detect test failures and mark for diagnostics capture.
 
-    When a HomeAssistantTimeoutError is detected, immediately capture and log
-    container diagnostics to help diagnose the cause of the timeout.
+    When a HomeAssistantTimeoutError is detected, confirms unresponsiveness via
+    ``check_health()``, captures container diagnostics, and sets the ``is_unresponsive``
+    flag so remaining tests are skipped and cleanup is suppressed.
     """
     global _diagnostics_captured
 
     if call.when == "call" and call.excinfo is not None:
-        # Check if this is a timeout exception
         if isinstance(call.excinfo.value, HomeAssistantTimeoutError):
-            # Try to get the docker manager from session stash
+            home_assistant = item.session.stash.get(_home_assistant_key, None)
             docker_manager = item.session.stash.get(_docker_manager_key, None)
-            if docker_manager is not None and not _diagnostics_captured:
-                # Capture test context for diagnostics
-                test_name = item.nodeid
-                test_duration = call.duration if hasattr(call, "duration") else None
-                logger.warning(f"Home Assistant request timed out\n" f"{docker_manager.get_container_diagnostics(test_name=test_name, test_duration=test_duration)}")
-                _diagnostics_captured = True
 
-        # Test failed - mark in session stash
+            if home_assistant is not None:
+                healthy = home_assistant.check_health()
+                if not healthy:
+                    logger.warning("Home Assistant confirmed UNREACHABLE after timeout — remaining tests will be skipped")
+                    if docker_manager is not None and not _diagnostics_captured:
+                        test_name = item.nodeid
+                        test_duration = call.duration if hasattr(call, "duration") else None
+                        logger.warning(f"Home Assistant request timed out\n" f"{docker_manager.get_container_diagnostics(test_name=test_name, test_duration=test_duration)}")
+                        _diagnostics_captured = True
+
         if not item.session.stash.get(_failure_key, False):
             item.session.stash[_failure_key] = True
 
@@ -125,7 +129,7 @@ def docker(request: pytest.FixtureRequest) -> Generator[DockerComposeManager, No
 
 
 @pytest.fixture(scope="session")
-def home_assistant(docker: DockerComposeManager) -> HomeAssistant:
+def home_assistant(request: pytest.FixtureRequest, docker: DockerComposeManager) -> HomeAssistant:
     """Provide Home Assistant API client for integration tests.
 
     This fixture creates a Home Assistant client configured with the dynamically
@@ -133,6 +137,7 @@ def home_assistant(docker: DockerComposeManager) -> HomeAssistant:
     is shared across all tests in the session (scope="session").
 
     Args:
+        request: The pytest request object for accessing session stash.
         docker: The Docker container manager fixture.
 
     Returns:
@@ -140,7 +145,9 @@ def home_assistant(docker: DockerComposeManager) -> HomeAssistant:
     """
     base_url = docker.get_home_assistant_url()
     access_token = docker.read_container_file("homeassistant", "/shared_data/.ha_token")
-    return HomeAssistant(base_url, access_token)
+    ha = HomeAssistant(base_url, access_token)
+    request.session.stash[_home_assistant_key] = ha
+    return ha
 
 
 @pytest.fixture(scope="session")
@@ -203,6 +210,24 @@ def time_machine(docker: DockerComposeManager, home_assistant: HomeAssistant) ->
 
 
 @pytest.fixture(autouse=True)
+def _skip_if_unresponsive(request: pytest.FixtureRequest) -> None:
+    """Skip remaining tests if Home Assistant has been confirmed unresponsive.
+
+    This autouse fixture runs before each test. If the test uses the ``home_assistant``
+    fixture and Home Assistant has been marked unresponsive (via a timeout + failed health
+    check), the test is skipped immediately. This prevents a cascade of ~40 timeout errors
+    when HA becomes unresponsive mid-suite.
+
+    Args:
+        request: The pytest request object for conditional fixture access.
+    """
+    if "home_assistant" in request.fixturenames:
+        home_assistant: HomeAssistant = request.getfixturevalue("home_assistant")
+        if home_assistant.is_unresponsive:
+            pytest.skip("Home Assistant is unresponsive")
+
+
+@pytest.fixture(autouse=True)
 def _cleanup_test_entities(request: pytest.FixtureRequest) -> Generator[None, None, None]:
     """Auto-cleanup fixture that removes test entities and restores entity config after each test.
 
@@ -217,6 +242,8 @@ def _cleanup_test_entities(request: pytest.FixtureRequest) -> Generator[None, No
 
     Only activates cleanup if the test actually used the home_assistant fixture,
     avoiding unnecessary Docker container startup for tests that don't need it.
+    Cleanup is skipped if Home Assistant has been confirmed unresponsive (futile
+    when the API is down).
 
     Args:
         request: The pytest request object for conditional fixture access.
@@ -230,6 +257,8 @@ def _cleanup_test_entities(request: pytest.FixtureRequest) -> Generator[None, No
     # Teardown: only clean up if the test used home_assistant fixture
     if "home_assistant" in request.fixturenames:
         home_assistant: HomeAssistant = request.getfixturevalue("home_assistant")
+        if home_assistant.is_unresponsive:
+            return
         try:
             home_assistant.restore_entity_config()
         finally:
