@@ -44,6 +44,7 @@ Tests (examples/) → Pytest plugin (conftest.py) → Client libraries → Docke
 docker (session)
   └─ home_assistant (session)
        └─ time_machine (session)
+  └─ _skip_if_unresponsive (function, autouse) [skips test if home_assistant.is_unresponsive]
   └─ _cleanup_test_entities (function, autouse) [conditionally restores config + deletes entities]
 ```
 
@@ -54,9 +55,11 @@ container after it starts.
 ### Key components
 
 - **[conftest.py](src/ha_integration_test_harness/conftest.py)** — Four session-scoped fixtures
-  (`docker`, `home_assistant`, `app_daemon`, `time_machine`) and a function-scoped autouse fixture
-  `_cleanup_test_entities` that calls `restore_entity_config()` then `clean_up_test_entities()` after
-  each test (only if the test used the `home_assistant` fixture).
+  (`docker`, `home_assistant`, `app_daemon`, `time_machine`), a function-scoped autouse fixture
+  `_skip_if_unresponsive` that skips remaining tests when HA is confirmed unresponsive, and a
+  function-scoped autouse fixture `_cleanup_test_entities` that calls `restore_entity_config()`
+  then `clean_up_test_entities()` after each test (only if the test used the `home_assistant`
+  fixture, and skipping cleanup when HA is unresponsive).
 
 - **[docker_manager.py](src/ha_integration_test_harness/docker_manager.py)** — Orchestrates Docker
   Compose. Auto-discovers HA config from `HOME_ASSISTANT_CONFIG_ROOT` env var or `home_assistant/`
