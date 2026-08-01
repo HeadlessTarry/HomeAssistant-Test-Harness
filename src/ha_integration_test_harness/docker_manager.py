@@ -681,7 +681,7 @@ class DockerComposeManager:
             except Exception as e:
                 logger.warning(f"Failed to clean up staged config directory: {e}")
 
-    def get_container_diagnostics(self) -> str:
+    def get_container_diagnostics(self, test_name: Optional[str] = None, test_duration: Optional[float] = None) -> str:
         """Dump logs and diagnostic information from all containers.
 
         Captures:
@@ -689,11 +689,20 @@ class DockerComposeManager:
         - Docker stats (CPU/memory usage)
         - Docker inspect (detailed state, restart count)
         - Network reachability test for Home Assistant API
+        - Current test name and duration (if provided)
+
+        Args:
+            test_name: Optional name of the test that triggered the diagnostics capture.
+            test_duration: Optional duration of the test in seconds.
 
         Returns:
             A string containing container diagnostics for debugging.
         """
         logs = ["========== CONTAINER DIAGNOSTICS =========="]
+        if test_name is not None:
+            logs.append(f"Test: {test_name}")
+            if test_duration is not None:
+                logs.append(f"Duration: {test_duration:.2f}s")
         try:
             self._containers = self._refresh_container_details()
             for container in self._containers.values():
@@ -718,8 +727,15 @@ class DockerComposeManager:
         # Docker inspect (detailed state, restart count)
         try:
             for container in self._containers.values():
+                inspect_format = (
+                    "{{.Name}}: "
+                    "State={{.State.Status}}, "
+                    "Restarts={{.RestartCount}}, "
+                    "ExitCode={{.State.ExitCode}}, "
+                    "OOMKilled={{.State.OOMKilled}}"
+                )
                 result = subprocess.run(
-                    ["docker", "inspect", "--format", "{{.Name}}: State={{.State.Status}}, Restarts={{.RestartCount}}, ExitCode={{.State.ExitCode}}, OOMKilled={{.State.OOMKilled}}", container.container_id],
+                    ["docker", "inspect", "--format", inspect_format, container.container_id],
                     capture_output=True,
                     text=True,
                     check=True,

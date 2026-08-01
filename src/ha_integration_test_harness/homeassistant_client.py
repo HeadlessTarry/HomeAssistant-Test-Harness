@@ -59,6 +59,7 @@ class HomeAssistant:
             attributes: Optional dictionary of attributes to set for the entity.
 
         Raises:
+            HomeAssistantTimeoutError: If the request times out.
             HomeAssistantClientError: If the request fails due to network issues or API errors.
         """
         if entity_id in self._created_entities:
@@ -93,6 +94,7 @@ class HomeAssistant:
             The state dictionary of the entity, or None if not found (404 response).
 
         Raises:
+            HomeAssistantTimeoutError: If the request times out.
             HomeAssistantClientError: If the request fails due to network issues or API errors.
         """
         url = f"{self._base_url}/api/states/{entity_id}"
@@ -121,6 +123,7 @@ class HomeAssistant:
             ``latitude``, ``longitude``, and ``unit_system``.
 
         Raises:
+            HomeAssistantTimeoutError: If the request times out.
             HomeAssistantClientError: If the request fails due to network issues or API errors.
         """
         url = f"{self._base_url}/api/config"
@@ -265,6 +268,7 @@ class HomeAssistant:
             entity_id: The entity ID to remove (e.g., 'light.living_room').
 
         Raises:
+            HomeAssistantTimeoutError: If the request times out.
             HomeAssistantClientError: If the request fails due to network issues or API errors.
         """
         if entity_id in self._created_entities:
@@ -295,6 +299,7 @@ class HomeAssistant:
             data: Optional dictionary of action data (e.g., {'entity_id': 'light.living_room'}).
 
         Raises:
+            HomeAssistantTimeoutError: If the request times out.
             HomeAssistantClientError: If the request fails due to network issues or API errors.
         """
         url = f"{self._base_url}/api/services/{domain}/{action}"
