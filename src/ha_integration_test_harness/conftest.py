@@ -22,12 +22,12 @@ _docker_manager_key: pytest.StashKey[Optional[DockerComposeManager]] = pytest.St
 
 def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[Any]) -> None:
     """Pytest hook to detect test failures and mark for diagnostics capture.
-    
+
     When a HomeAssistantTimeoutError is detected, immediately capture and log
     container diagnostics to help diagnose the cause of the timeout.
     """
     global _diagnostics_captured
-    
+
     if call.when == "call" and call.excinfo is not None:
         # Check if this is a timeout exception
         if isinstance(call.excinfo.value, HomeAssistantTimeoutError):
@@ -37,12 +37,9 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[Any]) -> 
                 # Capture test context for diagnostics
                 test_name = item.nodeid
                 test_duration = call.duration if hasattr(call, "duration") else None
-                logger.warning(
-                    f"Home Assistant request timed out\n"
-                    f"{docker_manager.get_container_diagnostics(test_name=test_name, test_duration=test_duration)}"
-                )
+                logger.warning(f"Home Assistant request timed out\n" f"{docker_manager.get_container_diagnostics(test_name=test_name, test_duration=test_duration)}")
                 _diagnostics_captured = True
-        
+
         # Test failed - mark in session stash
         if not item.session.stash.get(_failure_key, False):
             item.session.stash[_failure_key] = True

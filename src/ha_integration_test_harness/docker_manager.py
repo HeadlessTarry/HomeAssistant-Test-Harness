@@ -727,13 +727,7 @@ class DockerComposeManager:
         # Docker inspect (detailed state, restart count)
         try:
             for container in self._containers.values():
-                inspect_format = (
-                    "{{.Name}}: "
-                    "State={{.State.Status}}, "
-                    "Restarts={{.RestartCount}}, "
-                    "ExitCode={{.State.ExitCode}}, "
-                    "OOMKilled={{.State.OOMKilled}}"
-                )
+                inspect_format = "{{.Name}}: " "State={{.State.Status}}, " "Restarts={{.RestartCount}}, " "ExitCode={{.State.ExitCode}}, " "OOMKilled={{.State.OOMKilled}}"
                 result = subprocess.run(
                     ["docker", "inspect", "--format", inspect_format, container.container_id],
                     capture_output=True,
