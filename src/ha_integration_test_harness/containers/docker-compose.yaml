@@ -18,7 +18,7 @@ services:
     entrypoint: ["/bin/bash", "/entrypoint.sh"]
     healthcheck:
       start_period: 5s
-      test: ["CMD", "test", "-f", "/shared_data/.homeassistant_ready"]
+      test: ["CMD", "sh", "-c", "test -f /shared_data/.homeassistant_ready && curl -sf --max-time 2 http://localhost:8123/ > /dev/null"]
       timeout: 2s
       retries: 30
       interval: 3s

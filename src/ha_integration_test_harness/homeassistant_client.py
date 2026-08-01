@@ -9,7 +9,7 @@ from urllib.parse import urlparse, urlunparse
 import requests
 import websocket
 
-from .exceptions import HomeAssistantClientError
+from .exceptions import HomeAssistantClientError, HomeAssistantTimeoutError
 
 logger = logging.getLogger(__name__)
 
@@ -26,15 +26,17 @@ class HomeAssistant:
     for authentication.
     """
 
-    def __init__(self, base_url: str, access_token: str) -> None:
+    def __init__(self, base_url: str, access_token: str, timeout: int = 10) -> None:
         """Initialize the Home Assistant client.
 
         Args:
             base_url: The base URL of the Home Assistant instance.
             access_token: The long-lived access token for authentication.
+            timeout: Default timeout in seconds for HTTP requests (default: 10).
         """
         self._base_url = base_url
         self._access_token = access_token
+        self._timeout = timeout
         self._created_entities: set[str] = set()
         self._entity_original_config: dict[str, dict[str, Any]] = {}
         self._known_area_ids: Optional[set[str]] = None
@@ -74,8 +76,10 @@ class HomeAssistant:
             body: dict[str, Any] = {"state": state}
             if attributes is not None:
                 body["attributes"] = attributes
-            response_http = requests.post(url, json=body, headers=headers)
+            response_http = requests.post(url, json=body, headers=headers, timeout=self._timeout)
             response_http.raise_for_status()
+        except requests.Timeout as e:
+            raise HomeAssistantTimeoutError(f"Home Assistant request timed out after {self._timeout}s: POST {url}: {e}")
         except requests.RequestException as e:
             raise HomeAssistantClientError(f"Failed to set state for entity {entity_id} at {url}: {e}")
 
@@ -94,7 +98,7 @@ class HomeAssistant:
         url = f"{self._base_url}/api/states/{entity_id}"
         try:
             headers = {"Authorization": f"Bearer {self._access_token}"}
-            response = requests.get(url, headers=headers)
+            response = requests.get(url, headers=headers, timeout=self._timeout)
 
             # 404 is acceptable - entity doesn't exist
             if response.status_code == 404:
@@ -103,6 +107,8 @@ class HomeAssistant:
             response.raise_for_status()
             result: dict[str, Any] = response.json()
             return result
+        except requests.Timeout as e:
+            raise HomeAssistantTimeoutError(f"Home Assistant request timed out after {self._timeout}s: GET {url}: {e}")
         except requests.RequestException as e:
             raise HomeAssistantClientError(f"Failed to get state for entity {entity_id} from {url}: {e}")
 
@@ -120,10 +126,12 @@ class HomeAssistant:
         url = f"{self._base_url}/api/config"
         try:
             headers = {"Authorization": f"Bearer {self._access_token}"}
-            response = requests.get(url, headers=headers)
+            response = requests.get(url, headers=headers, timeout=self._timeout)
             response.raise_for_status()
             result: dict[str, Any] = response.json()
             return result
+        except requests.Timeout as e:
+            raise HomeAssistantTimeoutError(f"Home Assistant request timed out after {self._timeout}s: GET {url}: {e}")
         except requests.RequestException as e:
             raise HomeAssistantClientError(f"Failed to fetch Home Assistant config from {url}: {e}")
 
@@ -269,10 +277,12 @@ class HomeAssistant:
         url = f"{self._base_url}/api/states/{entity_id}"
         try:
             headers = {"Authorization": f"Bearer {self._access_token}"}
-            response_http = requests.delete(url, headers=headers)
+            response_http = requests.delete(url, headers=headers, timeout=self._timeout)
             # 404 is acceptable - entity doesn't exist, which is the desired outcome
             if response_http.status_code != 404:
                 response_http.raise_for_status()
+        except requests.Timeout as e:
+            raise HomeAssistantTimeoutError(f"Home Assistant request timed out after {self._timeout}s: DELETE {url}: {e}")
         except requests.RequestException as e:
             raise HomeAssistantClientError(f"Failed to remove entity {entity_id} from {url}: {e}")
 
@@ -290,8 +300,10 @@ class HomeAssistant:
         url = f"{self._base_url}/api/services/{domain}/{action}"
         try:
             headers = {"Authorization": f"Bearer {self._access_token}"}
-            response = requests.post(url, json=data or {}, headers=headers)
+            response = requests.post(url, json=data or {}, headers=headers, timeout=self._timeout)
             response.raise_for_status()
+        except requests.Timeout as e:
+            raise HomeAssistantTimeoutError(f"Home Assistant request timed out after {self._timeout}s: POST {url}: {e}")
         except requests.RequestException as e:
             raise HomeAssistantClientError(f"Failed to call action {domain}.{action} at {url}: {e}")
 

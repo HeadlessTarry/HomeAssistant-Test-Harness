@@ -12,6 +12,7 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
+import requests
 import yaml
 
 from .exceptions import DockerError, PersistentEntityError
@@ -681,10 +682,16 @@ class DockerComposeManager:
                 logger.warning(f"Failed to clean up staged config directory: {e}")
 
     def get_container_diagnostics(self) -> str:
-        """Dump logs from all containers for diagnostic purposes.
+        """Dump logs and diagnostic information from all containers.
+
+        Captures:
+        - Container status and logs (last 200 lines)
+        - Docker stats (CPU/memory usage)
+        - Docker inspect (detailed state, restart count)
+        - Network reachability test for Home Assistant API
 
         Returns:
-            A string containing container status and logs for debugging.
+            A string containing container diagnostics for debugging.
         """
         logs = ["========== CONTAINER DIAGNOSTICS =========="]
         try:
@@ -693,6 +700,50 @@ class DockerComposeManager:
                 logs.append(f"{container}")
         except Exception as e:
             logs.append(f"** ERROR ** Failed to dump container diagnostics: {e}")
+
+        # Docker stats (CPU/memory usage)
+        try:
+            result = subprocess.run(
+                ["docker", "stats", "--no-stream", "--format", "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}"],
+                cwd=self._containers_dir,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            logs.append("\n========== DOCKER STATS ==========")
+            logs.append(result.stdout)
+        except Exception as e:
+            logs.append(f"\n** ERROR ** Failed to get docker stats: {e}")
+
+        # Docker inspect (detailed state, restart count)
+        try:
+            for container in self._containers.values():
+                result = subprocess.run(
+                    ["docker", "inspect", "--format", "{{.Name}}: State={{.State.Status}}, Restarts={{.RestartCount}}, ExitCode={{.State.ExitCode}}, OOMKilled={{.State.OOMKilled}}", container.container_id],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                logs.append(result.stdout.strip())
+        except Exception as e:
+            logs.append(f"** ERROR ** Failed to get docker inspect: {e}")
+
+        # Network reachability test for Home Assistant API
+        try:
+            ha_container = self._get_container("homeassistant")
+            if ha_container and ha_container.url:
+                logs.append("\n========== NETWORK REACHABILITY ==========")
+                try:
+                    response = requests.get(f"{ha_container.url}/api/", timeout=5)
+                    logs.append(f"Home Assistant API reachable: HTTP {response.status_code}")
+                except requests.Timeout:
+                    logs.append("Home Assistant API UNREACHABLE: Request timed out after 5s")
+                except requests.ConnectionError:
+                    logs.append("Home Assistant API UNREACHABLE: Connection refused")
+                except Exception as e:
+                    logs.append(f"Home Assistant API UNREACHABLE: {e}")
+        except Exception as e:
+            logs.append(f"** ERROR ** Failed to test network reachability: {e}")
 
         logs.append("========== END DIAGNOSTICS ==========")
         return "\n".join(logs)
@@ -893,7 +944,7 @@ class DockerComposeManager:
 
                 # Get container logs (no tail limit for stopped/failed containers)
                 logs_result = subprocess.run(
-                    ["docker", "logs", "--tail=100", container_id],
+                    ["docker", "logs", "--tail=200", container_id],
                     capture_output=True,
                     text=True,
                     encoding="utf-8",

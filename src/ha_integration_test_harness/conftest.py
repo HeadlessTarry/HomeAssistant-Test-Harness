@@ -8,6 +8,7 @@ import pytest
 
 from .appdaemon_client import AppDaemon
 from .docker_manager import DockerComposeManager
+from .exceptions import HomeAssistantTimeoutError
 from .homeassistant_client import HomeAssistant
 from .time_machine import TimeMachine
 
@@ -16,11 +17,26 @@ logger = logging.getLogger(__name__)
 # Session-level flag to capture diagnostics only once
 _diagnostics_captured = False
 _failure_key: pytest.StashKey[bool] = pytest.StashKey()
+_docker_manager_key: pytest.StashKey[Optional[DockerComposeManager]] = pytest.StashKey()
 
 
 def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[Any]) -> None:
-    """Pytest hook to detect test failures and mark for diagnostics capture."""
+    """Pytest hook to detect test failures and mark for diagnostics capture.
+    
+    When a HomeAssistantTimeoutError is detected, immediately capture and log
+    container diagnostics to help diagnose the cause of the timeout.
+    """
+    global _diagnostics_captured
+    
     if call.when == "call" and call.excinfo is not None:
+        # Check if this is a timeout exception
+        if isinstance(call.excinfo.value, HomeAssistantTimeoutError):
+            # Try to get the docker manager from session stash
+            docker_manager = item.session.stash.get(_docker_manager_key, None)
+            if docker_manager is not None and not _diagnostics_captured:
+                logger.warning(f"Home Assistant request timed out\n{docker_manager.get_container_diagnostics()}")
+                _diagnostics_captured = True
+        
         # Test failed - mark in session stash
         if not item.session.stash.get(_failure_key, False):
             item.session.stash[_failure_key] = True
@@ -80,6 +96,8 @@ def docker(request: pytest.FixtureRequest) -> Generator[DockerComposeManager, No
     manager: Optional[DockerComposeManager] = None
     try:
         manager = DockerComposeManager(persistent_entities_path=persistent_entities_path)
+        # Store the manager in session stash so it can be accessed by hooks
+        request.session.stash[_docker_manager_key] = manager
         manager.start()
         logger.info("Docker containers started successfully")
         yield manager

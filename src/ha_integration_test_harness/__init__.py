@@ -30,6 +30,7 @@ from .exceptions import (
     AppDaemonClientError,
     DockerError,
     HomeAssistantClientError,
+    HomeAssistantTimeoutError,
     IntegrationTestError,
     TimeMachineError,
 )
@@ -52,6 +53,7 @@ __all__ = [
     "DockerError",
     "HomeAssistant",
     "HomeAssistantClientError",
+    "HomeAssistantTimeoutError",
     "IntegrationTestError",
     "TimeMachine",
     "TimeMachineError",
