@@ -40,6 +40,22 @@ class HomeAssistantClientError(IntegrationTestError):
     pass
 
 
+class HomeAssistantTimeoutError(HomeAssistantClientError):
+    """Exception raised when a Home Assistant HTTP request times out.
+
+    This is a specialized exception for timeout failures, allowing callers
+    to distinguish between timeouts and other API errors. Inherits from
+    HomeAssistantClientError for backwards compatibility.
+
+    This includes failures in:
+    - HTTP request timeouts (GET, POST, DELETE)
+    - Socket timeouts
+    - Connection timeouts
+    """
+
+    pass
+
+
 class AppDaemonClientError(IntegrationTestError):
     """Exception raised when AppDaemon operations fail.
 
