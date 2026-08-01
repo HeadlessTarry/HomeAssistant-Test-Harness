@@ -681,6 +681,54 @@ class DockerComposeManager:
             except Exception as e:
                 logger.warning(f"Failed to clean up staged config directory: {e}")
 
+    def _collect_docker_stats(self, logs: list[str]) -> None:
+        """Collect CPU/memory usage via docker stats."""
+        try:
+            result = subprocess.run(
+                ["docker", "stats", "--no-stream", "--format", "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}"],
+                cwd=self._containers_dir,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            logs.append("\n========== DOCKER STATS ==========")
+            logs.append(result.stdout)
+        except Exception as e:
+            logs.append(f"\n** ERROR ** Failed to get docker stats: {e}")
+
+    def _collect_docker_inspect(self, logs: list[str]) -> None:
+        """Collect detailed container state via docker inspect."""
+        try:
+            for container in self._containers.values():
+                inspect_format = "{{.Name}}: " "State={{.State.Status}}, " "Restarts={{.RestartCount}}, " "ExitCode={{.State.ExitCode}}, " "OOMKilled={{.State.OOMKilled}}"
+                result = subprocess.run(
+                    ["docker", "inspect", "--format", inspect_format, container.container_id],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                logs.append(result.stdout.strip())
+        except Exception as e:
+            logs.append(f"** ERROR ** Failed to get docker inspect: {e}")
+
+    def _collect_network_reachability(self, logs: list[str]) -> None:
+        """Test network reachability to Home Assistant API."""
+        try:
+            ha_container = self._get_container("homeassistant")
+            if ha_container and ha_container.url:
+                logs.append("\n========== NETWORK REACHABILITY ==========")
+                try:
+                    response = requests.get(f"{ha_container.url}/api/", timeout=5)
+                    logs.append(f"Home Assistant API reachable: HTTP {response.status_code}")
+                except requests.Timeout:
+                    logs.append("Home Assistant API UNREACHABLE: Request timed out after 5s")
+                except requests.ConnectionError:
+                    logs.append("Home Assistant API UNREACHABLE: Connection refused")
+                except Exception as e:
+                    logs.append(f"Home Assistant API UNREACHABLE: {e}")
+        except Exception as e:
+            logs.append(f"** ERROR ** Failed to test network reachability: {e}")
+
     def get_container_diagnostics(self, test_name: Optional[str] = None, test_duration: Optional[float] = None) -> str:
         """Dump logs and diagnostic information from all containers.
 
@@ -710,50 +758,9 @@ class DockerComposeManager:
         except Exception as e:
             logs.append(f"** ERROR ** Failed to dump container diagnostics: {e}")
 
-        # Docker stats (CPU/memory usage)
-        try:
-            result = subprocess.run(
-                ["docker", "stats", "--no-stream", "--format", "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}"],
-                cwd=self._containers_dir,
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            logs.append("\n========== DOCKER STATS ==========")
-            logs.append(result.stdout)
-        except Exception as e:
-            logs.append(f"\n** ERROR ** Failed to get docker stats: {e}")
-
-        # Docker inspect (detailed state, restart count)
-        try:
-            for container in self._containers.values():
-                inspect_format = "{{.Name}}: " "State={{.State.Status}}, " "Restarts={{.RestartCount}}, " "ExitCode={{.State.ExitCode}}, " "OOMKilled={{.State.OOMKilled}}"
-                result = subprocess.run(
-                    ["docker", "inspect", "--format", inspect_format, container.container_id],
-                    capture_output=True,
-                    text=True,
-                    check=True,
-                )
-                logs.append(result.stdout.strip())
-        except Exception as e:
-            logs.append(f"** ERROR ** Failed to get docker inspect: {e}")
-
-        # Network reachability test for Home Assistant API
-        try:
-            ha_container = self._get_container("homeassistant")
-            if ha_container and ha_container.url:
-                logs.append("\n========== NETWORK REACHABILITY ==========")
-                try:
-                    response = requests.get(f"{ha_container.url}/api/", timeout=5)
-                    logs.append(f"Home Assistant API reachable: HTTP {response.status_code}")
-                except requests.Timeout:
-                    logs.append("Home Assistant API UNREACHABLE: Request timed out after 5s")
-                except requests.ConnectionError:
-                    logs.append("Home Assistant API UNREACHABLE: Connection refused")
-                except Exception as e:
-                    logs.append(f"Home Assistant API UNREACHABLE: {e}")
-        except Exception as e:
-            logs.append(f"** ERROR ** Failed to test network reachability: {e}")
+        self._collect_docker_stats(logs)
+        self._collect_docker_inspect(logs)
+        self._collect_network_reachability(logs)
 
         logs.append("========== END DIAGNOSTICS ==========")
         return "\n".join(logs)
