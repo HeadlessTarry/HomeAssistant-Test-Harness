@@ -49,7 +49,7 @@ Then install:
 pip install -e ".[dev]"
 ```
 
-See the [Installation Guide](documentation/installation.md) for alternative methods.
+See the [Installation Guide](docs/installation.md) for alternative methods.
 
 ### Requirements
 
@@ -92,11 +92,12 @@ The plugin automatically:
 
 ## Documentation
 
-- [Installation Guide](documentation/installation.md)
-- [Usage Guide](documentation/usage.md)
-- [Available Fixtures](documentation/fixtures.md)
-- [Troubleshooting](documentation/troubleshooting.md)
-- [Development Guide](documentation/development.md)
+- [Installation Guide](docs/installation.md)
+- [Usage Guide](docs/usage.md)
+- [Available Fixtures](docs/fixtures.md)
+- [Troubleshooting](docs/troubleshooting.md)
+- [Development Guide](docs/development.md)
+- [Architecture Decisions](docs/adr/)
 
 ## Links
 

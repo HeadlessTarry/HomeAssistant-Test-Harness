@@ -201,7 +201,7 @@ HomeAssistant-Test-Harness/
 ├── examples/                          # Example tests
 │   ├── test_basic_usage.py
 │   └── config/                        # Minimal HA config
-├── documentation/                     # User documentation
+├── docs/                              # User documentation
 ├── .github/workflows/                 # CI/CD pipelines
 ├── pyproject.toml                     # Package metadata
 └── README.md                          # Project overview
