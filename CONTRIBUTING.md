@@ -4,7 +4,7 @@ Thank you for your interest in contributing! This document provides guidelines f
 
 ## Development Setup
 
-See the [Development Guide](documentation/development.md) for complete setup instructions.
+See the [Development Guide](docs/development.md) for complete setup instructions.
 
 Quick start:
 
@@ -25,7 +25,7 @@ This script will:
 
 This project maintains high code quality standards:
 
-- **Style Guide**: See [Development Guide - Code Standards](documentation/development.md#code-standards)
+- **Style Guide**: See [Development Guide - Code Standards](docs/development.md#code-standards)
 - **Pre-commit Hooks**: Automatically enforced via `.pre-commit-config.yaml`
   - black (formatting)
   - isort (import sorting)
@@ -67,7 +67,7 @@ This project uses a pragmatic testing approach:
 - **Example Tests**: Located in `examples/` directory - these serve as both documentation and validation
 - **Manual Testing**: Test your changes in a real Home Assistant configuration repository
 
-See the [Development Guide - Testing](documentation/development.md#testing-the-package) for more details.
+See the [Development Guide - Testing](docs/development.md#testing-the-package) for more details.
 
 ## Reporting Issues
 
@@ -103,7 +103,7 @@ This project follows our [Code of Conduct](CODE_OF_CONDUCT.md). By participating
 
 ## Questions
 
-- **Documentation**: Check the [documentation](documentation/) directory
+- **Documentation**: Check the [documentation](docs/) directory
 - **Issues**: Search [existing issues](https://github.com/HeadlessTarry/HomeAssistant-Test-Harness/issues)
 - **New questions**: Open a new issue with the question label
 

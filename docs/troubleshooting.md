@@ -10,7 +10,7 @@
 DockerError: configuration.yaml not found at /path/to/home_assistant/configuration.yaml.
 Tests must be run from a directory containing a 'home_assistant' subdirectory with your Home Assistant configuration,
 or set HOME_ASSISTANT_CONFIG_ROOT environment variable to specify the location.
-See: https://github.com/HeadlessTarry/HomeAssistant-Test-Harness/blob/main/documentation/usage.md
+See: https://github.com/HeadlessTarry/HomeAssistant-Test-Harness/blob/main/docs/usage.md
 ```
 
 **Cause:** Tests cannot find your Home Assistant `configuration.yaml` file.
