@@ -324,6 +324,36 @@ class HomeAssistant:
         except requests.RequestException as e:
             raise HomeAssistantClientError(f"Failed to call action {domain}.{action} at {url}: {e}")
 
+    def call_action_with_response(self, domain: str, action: str, data: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+        """Call a Home Assistant action (service) and return its response.
+
+        Args:
+            domain: The domain of the action (e.g., 'light', 'switch', 'ai_task').
+            action: The action to call (e.g., 'turn_on', 'generate_data').
+            data: Optional dictionary of action data.
+
+        Returns:
+            The service response dictionary from the service call.
+
+        Raises:
+            HomeAssistantTimeoutError: If the request times out.
+            HomeAssistantClientError: If the request fails due to network issues or API errors.
+        """
+        url = f"{self._base_url}/api/services/{domain}/{action}?return_response"
+        try:
+            headers = {"Authorization": f"Bearer {self._access_token}"}
+            response = requests.post(url, json=data or {}, headers=headers, timeout=self._timeout)
+            if response.status_code >= 400:
+                raise HomeAssistantClientError(f"Failed to call action {domain}.{action} at {url}: {response.status_code} {response.reason}\n" + f"Response body: {response.text}")
+            response_json = response.json()
+            service_response = response_json.get("service_response", response_json)
+            assert isinstance(service_response, dict)
+            return service_response
+        except requests.Timeout as e:
+            raise HomeAssistantTimeoutError(f"Home Assistant request timed out after {self._timeout}s: POST {url}: {e}")
+        except requests.RequestException as e:
+            raise HomeAssistantClientError(f"Failed to call action {domain}.{action} at {url}: {e}")
+
     def check_health(self) -> bool:
         """Check whether Home Assistant is responsive.
 
