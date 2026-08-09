@@ -23,6 +23,14 @@ pytest examples/
 pytest examples/test_basic_usage.py::test_entity_state_with_auto_cleanup
 ```
 
+## Commit Workflow
+
+**Before committing, always run `./run_checks.sh` and fix all failures.**
+Never use `git commit --no-verify` to bypass pre-commit hooks.
+If pre-commit hooks fail, fix the underlying issues (formatting, linting, type errors) rather than skipping the checks.
+
+Pre-commit hooks enforce code quality standards (black, isort, flake8, mypy, yamllint, markdownlint). These must pass before code is merged.
+
 ## Documentation
 
 - [Architecture & key components](docs/development.md)

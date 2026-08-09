@@ -48,7 +48,7 @@ This project maintains high code quality standards:
    ./run_checks.sh
    ```
 
-4. **Commit your changes** with clear, descriptive commit messages
+4. **Commit your changes** with clear, descriptive commit messages. **Never use `git commit --no-verify`** - if pre-commit hooks fail, fix the underlying issues instead of bypassing the checks.
 5. **Push to your fork** and submit a pull request
 
 ## Pull Request Guidelines
