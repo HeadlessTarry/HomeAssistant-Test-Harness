@@ -344,7 +344,10 @@ class HomeAssistant:
             headers = {"Authorization": f"Bearer {self._access_token}"}
             response = requests.post(url, json=data or {}, headers=headers, timeout=self._timeout)
             if response.status_code >= 400:
-                raise HomeAssistantClientError(f"Failed to call action {domain}.{action} at {url}: {response.status_code} {response.reason}\n" f"Response body: {response.text}")
+                raise HomeAssistantClientError(
+                    f"Failed to call action {domain}.{action} at {url}: {response.status_code} {response.reason}\n"
+                    + f"Response body: {response.text}"
+                )
             response_json = response.json()
             service_response = response_json.get("service_response", response_json)
             assert isinstance(service_response, dict)

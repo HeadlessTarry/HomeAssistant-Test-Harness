@@ -83,7 +83,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return True
 
 
-async def async_service_generate_data(call: ServiceCall) -> ServiceResponse:
+def async_service_generate_data(call: ServiceCall) -> ServiceResponse:
     """Handle ai_task.generate_data service calls.
 
     Returns a fixed mock response to allow automations that use ai_task.generate_data
