@@ -239,6 +239,58 @@ class TestVolumeControls:
         home_assistant.assert_entity_state("media_player.test_speaker", "off")
 
 
+class TestShuffleControls:
+
+    def test_shuffle_set_true(self, home_assistant: HomeAssistant) -> None:
+        """Test that shuffle_set with True updates shuffle attribute."""
+        home_assistant.given_an_entity("media_player.test_speaker", "playing")
+
+        home_assistant.call_action(
+            "media_player",
+            "shuffle_set",
+            {"entity_id": "media_player.test_speaker", "shuffle": True},
+        )
+
+        home_assistant.assert_entity_state(
+            "media_player.test_speaker",
+            "playing",
+            expected_attributes={"shuffle": True},
+        )
+
+    def test_shuffle_set_false(self, home_assistant: HomeAssistant) -> None:
+        """Test that shuffle_set with False updates shuffle attribute."""
+        home_assistant.given_an_entity("media_player.test_speaker", "playing")
+        home_assistant.call_action(
+            "media_player",
+            "shuffle_set",
+            {"entity_id": "media_player.test_speaker", "shuffle": True},
+        )
+
+        home_assistant.call_action(
+            "media_player",
+            "shuffle_set",
+            {"entity_id": "media_player.test_speaker", "shuffle": False},
+        )
+
+        home_assistant.assert_entity_state(
+            "media_player.test_speaker",
+            "playing",
+            expected_attributes={"shuffle": False},
+        )
+
+    def test_shuffle_set_does_not_power_on(self, home_assistant: HomeAssistant) -> None:
+        """Test that shuffle_set does not auto-power-on the entity."""
+        home_assistant.given_an_entity("media_player.test_speaker", "off")
+
+        home_assistant.call_action(
+            "media_player",
+            "shuffle_set",
+            {"entity_id": "media_player.test_speaker", "shuffle": True},
+        )
+
+        home_assistant.assert_entity_state("media_player.test_speaker", "off")
+
+
 class TestEdgeCases:
 
     def test_media_play_when_off_is_noop(self, home_assistant: HomeAssistant) -> None:
