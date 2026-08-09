@@ -333,11 +333,11 @@ class VirtualLightEntity(LightEntity):
 
 
 class VirtualMediaPlayerEntity(MediaPlayerEntity):
-    """A virtual media player entity with programmatically controlled state.
+    """A virtual media player with programmatically controlled state.
 
     Supports turn_on/turn_off, playback transport (play_media, play, pause, stop,
-    play_pause, next_track, previous_track, seek), and volume (set, up, down, mute)
-    actions. State and attributes can be set directly via set_virtual_state().
+    play_pause, next_track, previous_track, seek), volume (set, up, down, mute),
+    and shuffle_set actions. State and attributes can be set directly via set_virtual_state().
     """
 
     _attr_should_poll = False
@@ -355,6 +355,7 @@ class VirtualMediaPlayerEntity(MediaPlayerEntity):
         | MediaPlayerEntityFeature.VOLUME_SET
         | MediaPlayerEntityFeature.VOLUME_STEP
         | MediaPlayerEntityFeature.VOLUME_MUTE
+        | MediaPlayerEntityFeature.SHUFFLE_SET
     )
 
     def __init__(self, unique_id: str, entity_id: str, state: str, attributes: dict[str, Any]) -> None:
@@ -382,6 +383,8 @@ class VirtualMediaPlayerEntity(MediaPlayerEntity):
             self._volume_level = float(attributes["volume_level"])
         if "is_volume_muted" in attributes:
             self._is_volume_muted = bool(attributes["is_volume_muted"])
+        if "shuffle" in attributes:
+            self._attr_shuffle = bool(attributes["shuffle"])
 
     @property
     def is_on(self) -> bool | None:
@@ -512,6 +515,11 @@ class VirtualMediaPlayerEntity(MediaPlayerEntity):
         self._is_volume_muted = mute
         self.async_write_ha_state()
 
+    async def async_set_shuffle(self, shuffle: bool) -> None:
+        """Enable or disable shuffle mode."""
+        self._attr_shuffle = shuffle
+        self.async_write_ha_state()
+
     def set_virtual_state(self, state: str, attributes: dict[str, Any] | None = None) -> None:
         """Update the entity state and optionally attributes, then push to HA.
 
@@ -535,6 +543,8 @@ class VirtualMediaPlayerEntity(MediaPlayerEntity):
                 self._volume_level = float(attributes["volume_level"])
             if "is_volume_muted" in attributes:
                 self._is_volume_muted = bool(attributes["is_volume_muted"])
+            if "shuffle" in attributes:
+                self._attr_shuffle = bool(attributes["shuffle"])
         self.async_write_ha_state()
 
 
