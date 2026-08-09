@@ -30,6 +30,8 @@ template:
 input_button:
   turn_on_brightness_light:
     name: "Turn on brightness light"
+  ai_task_trigger:
+    name: "AI task trigger"
 
 automation:
   # Turns on all lights labelled 'test_label_target' when the label automation
@@ -100,3 +102,23 @@ automation:
           - sensor.perf_test_4
     action:
       - delay: "00:00:01"
+
+  # Test automation: calls ai_task.generate_data and stores the response in a variable,
+  # then uses that variable to set a sensor state. Used by test_ai_task.py to verify
+  # that ai_task.generate_data works correctly with response_variable in automations.
+  - id: test_ai_task_with_response
+    alias: "Test - AI task with response variable"
+    trigger:
+      - platform: state
+        entity_id: input_button.ai_task_trigger
+    action:
+      - action: ai_task.generate_data
+        response_variable: ai_response
+        data:
+          task_name: "Test greeting"
+          instructions: "Generate a test greeting"
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.ai_greeting_result
+        data:
+          value: "{{ ai_response.data }}"

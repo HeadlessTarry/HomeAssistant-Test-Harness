@@ -42,6 +42,10 @@ input_text:
     name: Alarm Code
     initial: "1234"
     max: 10
+  ai_greeting_result:
+    name: AI Greeting Result
+    initial: ""
+    max: 255
 
 input_select:
   house_mode:

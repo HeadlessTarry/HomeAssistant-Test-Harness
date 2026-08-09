@@ -17,11 +17,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from typing import Any
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
 from homeassistant.helpers import discovery
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.typing import ConfigType
@@ -70,8 +71,35 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     websocket_api.async_register_command(hass, ws_set_entity_state)
     websocket_api.async_register_command(hass, ws_delete_entity)
 
+    hass.services.async_register(
+        "ai_task",
+        "generate_data",
+        async_service_generate_data,
+        schema=vol.Schema({}, extra=vol.ALLOW_EXTRA),
+        supports_response=SupportsResponse.ONLY,
+    )
+
     _LOGGER.info("[ha_test_harness] Integration loaded")
     return True
+
+
+async def async_service_generate_data(call: ServiceCall) -> ServiceResponse:
+    """Handle ai_task.generate_data service calls.
+
+    Returns a fixed mock response to allow automations that use ai_task.generate_data
+    to complete without error during integration tests.
+
+    Args:
+        call: The service call object containing task_name, instructions, and optional parameters.
+
+    Returns:
+        A dictionary with conversation_id (UUID) and data (fixed mock response).
+    """
+    _LOGGER.info("[ha_test_harness] ai_task.generate_data called with data: %s", call.data)
+    return {
+        "conversation_id": str(uuid.uuid4()),
+        "data": "Mock AI response",
+    }
 
 
 def _create_virtual_entity(domain: str, unique_id: str, entity_id: str, state: str, attributes: dict[str, Any]) -> Any:
