@@ -41,6 +41,7 @@ class HomeAssistant:
         self._timeout = timeout
         self._created_entities: set[str] = set()
         self._entity_original_config: dict[str, dict[str, Any]] = {}
+        self._entity_original_state: dict[str, Optional[dict[str, Any]]] = {}
         self._known_area_ids: Optional[set[str]] = None
         self._known_label_ids: Optional[set[str]] = None
         self._is_unresponsive: bool = False
@@ -65,6 +66,10 @@ class HomeAssistant:
         REST-injected entities are written only to the HA state machine — they are **not**
         registered in the entity registry and cannot be used with ``given_entity_has()``.
 
+        Before the first ``set_state()`` call per entity per test, the current state is
+        snapshot and will be automatically restored after the test completes. If the entity
+        didn't exist before ``set_state()`` was called, it will be removed at teardown.
+
         Args:
             entity_id: The entity ID to set the state for (e.g., 'light.living_room').
             state: The state value to set for the entity.
@@ -73,6 +78,26 @@ class HomeAssistant:
         Raises:
             HomeAssistantTimeoutError: If the request times out.
             HomeAssistantClientError: If the request fails due to network issues or API errors.
+        """
+        if entity_id not in self._entity_original_state:
+            self._entity_original_state[entity_id] = self.get_state(entity_id)
+
+        self._apply_state(entity_id, state, attributes)
+
+    def _apply_state(self, entity_id: str, state: str, attributes: Optional[dict[str, Any]] = None) -> None:
+        """Apply state and/or attributes to an entity via the appropriate mechanism.
+
+        Routes the state update through WebSocket for entities created via ``given_an_entity()``
+        (to preserve entity registry registration), or through REST API for other entities.
+
+        Args:
+            entity_id: The entity ID to update.
+            state: The state value to set.
+            attributes: Optional dictionary of attributes to set.
+
+        Raises:
+            HomeAssistantTimeoutError: If the request times out.
+            HomeAssistantClientError: If the request fails.
         """
         if entity_id in self._created_entities:
             payload: dict[str, Any] = {"id": 1, "type": "ha_test_harness/entity/set_state", "entity_id": entity_id, "state": state}
@@ -699,6 +724,36 @@ class HomeAssistant:
 
         if errors:
             raise HomeAssistantClientError(f"Failed to restore config for {len(errors)} entities:\n" + "\n".join(errors))
+
+    def restore_entity_states(self) -> None:
+        """Restore all entity states modified by set_state() to their original values.
+
+        This method is called automatically after each test function completes.
+        It restores both state and attributes for all entities modified via ``set_state()``.
+        If an entity didn't exist before ``set_state()`` was called (snapshot is None),
+        it is removed. Tracking is cleared regardless of success or failure to prevent
+        state pollution across tests.
+
+        Raises:
+            HomeAssistantClientError: If any state restoration fails.
+        """
+        errors = []
+
+        for entity_id, original_state in list(self._entity_original_state.items()):
+            try:
+                if original_state is None:
+                    self.remove_entity(entity_id)
+                else:
+                    state_value = original_state.get("state", "")
+                    attributes_value = original_state.get("attributes")
+                    self._apply_state(entity_id, state_value, attributes_value)
+            except HomeAssistantClientError as e:
+                errors.append(str(e))
+
+        self._entity_original_state.clear()
+
+        if errors:
+            raise HomeAssistantClientError(f"Failed to restore state for {len(errors)} entities:\n" + "\n".join(errors))
 
     def clean_up_test_entities(self) -> None:
         """Remove all entities created via given_an_entity().

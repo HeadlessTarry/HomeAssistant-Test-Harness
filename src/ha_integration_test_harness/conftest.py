@@ -235,6 +235,8 @@ def _cleanup_test_entities(request: pytest.FixtureRequest) -> Generator[None, No
 
     - Calls ``restore_entity_config()`` to undo any label or area changes made via
       ``given_entity_has()`` during the test.
+    - Calls ``restore_entity_states()`` to undo any state changes made via
+      ``set_state()`` during the test.
     - Calls ``clean_up_test_entities()`` to remove any entities created via
       ``given_an_entity()``.
 
@@ -262,4 +264,7 @@ def _cleanup_test_entities(request: pytest.FixtureRequest) -> Generator[None, No
         try:
             home_assistant.restore_entity_config()
         finally:
-            home_assistant.clean_up_test_entities()
+            try:
+                home_assistant.restore_entity_states()
+            finally:
+                home_assistant.clean_up_test_entities()
