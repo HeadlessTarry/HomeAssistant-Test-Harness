@@ -82,6 +82,23 @@ class HomeAssistant:
         if entity_id not in self._entity_original_state:
             self._entity_original_state[entity_id] = self.get_state(entity_id)
 
+        self._apply_state(entity_id, state, attributes)
+
+    def _apply_state(self, entity_id: str, state: str, attributes: Optional[dict[str, Any]] = None) -> None:
+        """Apply state and/or attributes to an entity via the appropriate mechanism.
+
+        Routes the state update through WebSocket for entities created via ``given_an_entity()``
+        (to preserve entity registry registration), or through REST API for other entities.
+
+        Args:
+            entity_id: The entity ID to update.
+            state: The state value to set.
+            attributes: Optional dictionary of attributes to set.
+
+        Raises:
+            HomeAssistantTimeoutError: If the request times out.
+            HomeAssistantClientError: If the request fails.
+        """
         if entity_id in self._created_entities:
             payload: dict[str, Any] = {"id": 1, "type": "ha_test_harness/entity/set_state", "entity_id": entity_id, "state": state}
             if attributes is not None:
@@ -714,14 +731,13 @@ class HomeAssistant:
         This method is called automatically after each test function completes.
         It restores both state and attributes for all entities modified via ``set_state()``.
         If an entity didn't exist before ``set_state()`` was called (snapshot is None),
-        it is removed. Successfully restored/removed entities are cleared from tracking
-        immediately, while failed restorations remain tracked.
+        it is removed. Tracking is cleared regardless of success or failure to prevent
+        state pollution across tests.
 
         Raises:
             HomeAssistantClientError: If any state restoration fails.
         """
         errors = []
-        successfully_restored = []
 
         for entity_id, original_state in list(self._entity_original_state.items()):
             try:
@@ -730,49 +746,14 @@ class HomeAssistant:
                 else:
                     state_value = original_state.get("state", "")
                     attributes_value = original_state.get("attributes")
-                    self._restore_state_internal(entity_id, state_value, attributes_value)
-                successfully_restored.append(entity_id)
+                    self._apply_state(entity_id, state_value, attributes_value)
             except HomeAssistantClientError as e:
                 errors.append(str(e))
 
-        for entity_id in successfully_restored:
-            del self._entity_original_state[entity_id]
+        self._entity_original_state.clear()
 
         if errors:
             raise HomeAssistantClientError(f"Failed to restore state for {len(errors)} entities:\n" + "\n".join(errors))
-
-    def _restore_state_internal(self, entity_id: str, state: str, attributes: Optional[dict[str, Any]] = None) -> None:
-        """Internal method to restore entity state without triggering snapshot logic.
-
-        This bypasses the normal set_state() snapshot mechanism to avoid overwriting
-        the original state we're trying to restore to.
-
-        Args:
-            entity_id: The entity ID to restore state for.
-            state: The state value to restore.
-            attributes: Optional dictionary of attributes to restore.
-        """
-        if entity_id in self._created_entities:
-            payload: dict[str, Any] = {"id": 1, "type": "ha_test_harness/entity/set_state", "entity_id": entity_id, "state": state}
-            if attributes is not None:
-                payload["attributes"] = attributes
-            response = self._ws_send_receive(payload)
-            if not response.get("success"):
-                raise HomeAssistantClientError(f"Failed to restore state for entity {entity_id} via ha_test_harness: {response}")
-            return
-
-        url = f"{self._base_url}/api/states/{entity_id}"
-        try:
-            headers = {"Authorization": f"Bearer {self._access_token}"}
-            body: dict[str, Any] = {"state": state}
-            if attributes is not None:
-                body["attributes"] = attributes
-            response_http = requests.post(url, json=body, headers=headers, timeout=self._timeout)
-            response_http.raise_for_status()
-        except requests.Timeout as e:
-            raise HomeAssistantTimeoutError(f"Home Assistant request timed out after {self._timeout}s: POST {url}: {e}")
-        except requests.RequestException as e:
-            raise HomeAssistantClientError(f"Failed to restore state for entity {entity_id} at {url}: {e}")
 
     def clean_up_test_entities(self) -> None:
         """Remove all entities created via given_an_entity().
