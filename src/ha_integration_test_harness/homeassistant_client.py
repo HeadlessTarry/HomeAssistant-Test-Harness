@@ -569,7 +569,7 @@ class HomeAssistant:
         ws_url = urlunparse(ws_parsed._replace(scheme=ws_scheme, path="/api/websocket"))
         ws = websocket.WebSocket()
         try:
-            ws.connect(ws_url, timeout=timeout)
+            ws.connect(ws_url, timeout=timeout)  # type: ignore[no-untyped-call]
 
             # Use a short timeout for the auth handshake: on a healthy HA instance the
             # auth_required and auth_ok messages arrive in well under a second.  The full
@@ -578,7 +578,7 @@ class HomeAssistant:
             # Without this split, ws.connect(timeout=60) sets sock.settimeout(60) globally,
             # and all three recv() calls independently inherit that ceiling — worst case
             # 3 × 60 s = 180 s before a connection problem surfaces.
-            ws.sock.settimeout(10)
+            ws.sock.settimeout(10)  # type: ignore[union-attr]
 
             # Receive auth_required
             auth_required = json.loads(ws.recv())
@@ -594,7 +594,7 @@ class HomeAssistant:
                 raise HomeAssistantClientError(f"WebSocket authentication failed: {auth_result}")
 
             # Restore the caller-supplied timeout for the command response.
-            ws.sock.settimeout(timeout)
+            ws.sock.settimeout(timeout)  # type: ignore[union-attr]
 
             # Send command and receive response
             ws.send(json.dumps(payload))
