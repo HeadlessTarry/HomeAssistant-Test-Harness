@@ -46,18 +46,21 @@ class TestTemplateSensorFreeze:
 
         home_assistant.assert_entity_state(template_entity, "overridden_value")
 
-    def test_template_sensor_returns_to_normal_after_cleanup(self, home_assistant: HomeAssistant) -> None:
-        """Test that the template sensor returns to normal template behavior after cleanup.
+    def test_template_sensor_responds_to_source_changes_when_not_frozen(self, home_assistant: HomeAssistant) -> None:
+        """Test that the template sensor responds to source entity changes when not frozen.
 
-        After the previous test's cleanup, the template sensor is unfrozen and should
-        respond to source entity changes normally.
+        This test verifies that template sensors work normally (i.e., respond to source
+        entity changes) when they haven't been frozen by set_state(). This demonstrates
+        the baseline behavior that the freeze mechanism is designed to override.
         """
         template_entity = "sensor.template_test_sensor"
         source_entity = "input_boolean.state_template_sensor_source"
 
+        # Ensure source is off and template reflects it
         home_assistant.call_action("input_boolean", "turn_off", {"entity_id": source_entity})
         home_assistant.assert_entity_state(template_entity, "off")
 
+        # Change source and verify template follows
         home_assistant.call_action("input_boolean", "turn_on", {"entity_id": source_entity})
         home_assistant.assert_entity_state(template_entity, "on")
 
@@ -80,13 +83,23 @@ class TestTemplateLightFreeze:
 
         home_assistant.assert_entity_state(template_entity, "on", {"brightness": 128})
 
-    def test_template_light_returns_to_normal_after_cleanup(self, home_assistant: HomeAssistant) -> None:
-        """Test that the template light returns to normal template behavior after cleanup."""
+    def test_template_light_responds_to_source_changes_when_not_frozen(self, home_assistant: HomeAssistant) -> None:
+        """Test that the template light responds to source entity changes when not frozen.
+
+        This test verifies that template lights work normally (i.e., respond to source
+        entity changes) when they haven't been frozen by set_state(). This demonstrates
+        the baseline behavior that the freeze mechanism is designed to override.
+        """
         template_entity = "light.living_room_lamp"
         source_entity = "input_boolean.state_living_room_lamp"
 
+        # Ensure source is off and template reflects it
         home_assistant.call_action("input_boolean", "turn_off", {"entity_id": source_entity})
         home_assistant.assert_entity_state(template_entity, "off")
+
+        # Change source and verify template follows
+        home_assistant.call_action("input_boolean", "turn_on", {"entity_id": source_entity})
+        home_assistant.assert_entity_state(template_entity, "on")
 
 
 class TestNonTemplateEntitiesUnaffected:
