@@ -8,9 +8,11 @@ standard entity registry API.
 Supported domains: sensor, binary_sensor, input_boolean, switch, light, media_player, select.
 
 WebSocket commands exposed:
-  ha_test_harness/entity/create   - Create a new virtual entity.
-  ha_test_harness/entity/set_state - Update state/attributes of an existing entity.
-  ha_test_harness/entity/delete   - Remove an entity from HA entirely.
+  ha_test_harness/entity/create     - Create a new virtual entity.
+  ha_test_harness/entity/set_state  - Update state/attributes of an existing entity.
+  ha_test_harness/entity/delete     - Remove an entity from HA entirely.
+  ha_test_harness/template/freeze   - Freeze a template entity to prevent re-evaluation.
+  ha_test_harness/template/unfreeze - Unfreeze a template entity to restore re-evaluation.
 """
 
 from __future__ import annotations
@@ -22,6 +24,7 @@ from typing import Any
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
+from homeassistant.components.template.template_entity import TemplateEntity
 from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
 from homeassistant.helpers import discovery
 from homeassistant.helpers import entity_registry as er
@@ -62,14 +65,19 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         "entities": {},  # entity_id -> VirtualEntity instance
         "add_callbacks": {},  # domain -> async_add_entities callback
         "platform_ready": platform_ready_events,
+        "frozen_entities": set(),  # entity_ids of frozen template entities
     }
 
     for domain in SUPPORTED_DOMAINS:
         hass.async_create_task(discovery.async_load_platform(hass, domain, DOMAIN, {"domain": domain}, config))
 
+    _apply_template_monkey_patch(hass)
+
     websocket_api.async_register_command(hass, ws_create_entity)
     websocket_api.async_register_command(hass, ws_set_entity_state)
     websocket_api.async_register_command(hass, ws_delete_entity)
+    websocket_api.async_register_command(hass, ws_freeze_template_entity)
+    websocket_api.async_register_command(hass, ws_unfreeze_template_entity)
 
     hass.services.async_register(
         "ai_task",
@@ -100,6 +108,29 @@ def async_service_generate_data(call: ServiceCall) -> ServiceResponse:
         "conversation_id": str(uuid.uuid4()),
         "data": "Mock AI response",
     }
+
+
+def _apply_template_monkey_patch(hass: HomeAssistant) -> None:
+    """Monkey-patch TemplateEntity._handle_results to support freezing template entities.
+
+    When an entity_id is in the frozen_entities set, the patched method skips the
+    template re-evaluation entirely, preventing the template from overwriting any
+    state override set via set_state().
+    """
+    original_handle_results = TemplateEntity._handle_results
+
+    def _patched_handle_results(
+        self: TemplateEntity,
+        event: Any,
+        updates: list[Any],
+    ) -> None:
+        entity_id = self.entity_id
+        if entity_id in hass.data[DOMAIN]["frozen_entities"]:
+            return
+        original_handle_results(self, event, updates)
+
+    TemplateEntity._handle_results = _patched_handle_results  # type: ignore[method-assign]
+    _LOGGER.info("[ha_test_harness] Monkey-patched TemplateEntity._handle_results for template freeze support")
 
 
 def _create_virtual_entity(domain: str, unique_id: str, entity_id: str, state: str, attributes: dict[str, Any]) -> Any:
@@ -263,4 +294,40 @@ async def ws_delete_entity(hass: HomeAssistant, connection: websocket_api.Active
     except Exception as exc:  # noqa: BLE001
         _LOGGER.warning("[ha_test_harness] Error removing entity %r from registry: %s", entity_id, exc)
 
+    connection.send_result(msg["id"], {"entity_id": entity_id})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "ha_test_harness/template/freeze",
+        vol.Required("entity_id"): str,
+    }
+)
+@websocket_api.async_response
+async def ws_freeze_template_entity(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    """Handle ha_test_harness/template/freeze WebSocket command.
+
+    Adds the entity to the frozen set, preventing TemplateEntity._handle_results
+    from overwriting the state on template re-evaluation. Idempotent.
+    """
+    entity_id: str = msg["entity_id"]
+    hass.data[DOMAIN]["frozen_entities"].add(entity_id)
+    connection.send_result(msg["id"], {"entity_id": entity_id})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "ha_test_harness/template/unfreeze",
+        vol.Required("entity_id"): str,
+    }
+)
+@websocket_api.async_response
+async def ws_unfreeze_template_entity(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    """Handle ha_test_harness/template/unfreeze WebSocket command.
+
+    Removes the entity from the frozen set, restoring normal template re-evaluation.
+    Idempotent.
+    """
+    entity_id: str = msg["entity_id"]
+    hass.data[DOMAIN]["frozen_entities"].discard(entity_id)
     connection.send_result(msg["id"], {"entity_id": entity_id})
