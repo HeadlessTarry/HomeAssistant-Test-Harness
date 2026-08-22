@@ -42,6 +42,7 @@ class HomeAssistant:
         self._created_entities: set[str] = set()
         self._entity_original_config: dict[str, dict[str, Any]] = {}
         self._entity_original_state: dict[str, Optional[dict[str, Any]]] = {}
+        self._frozen_template_entities: set[str] = set()
         self._known_area_ids: Optional[set[str]] = None
         self._known_label_ids: Optional[set[str]] = None
         self._is_unresponsive: bool = False
@@ -84,7 +85,7 @@ class HomeAssistant:
 
         self._apply_state(entity_id, state, attributes)
 
-    def _apply_state(self, entity_id: str, state: str, attributes: Optional[dict[str, Any]] = None) -> None:
+    def _apply_state(self, entity_id: str, state: str, attributes: Optional[dict[str, Any]] = None, *, _freeze: bool = True) -> None:
         """Apply state and/or attributes to an entity via the appropriate mechanism.
 
         Routes the state update through WebSocket for entities created via ``given_an_entity()``
@@ -94,6 +95,7 @@ class HomeAssistant:
             entity_id: The entity ID to update.
             state: The state value to set.
             attributes: Optional dictionary of attributes to set.
+            _freeze: Whether to freeze the entity after applying state (internal use only).
 
         Raises:
             HomeAssistantTimeoutError: If the request times out.
@@ -120,6 +122,9 @@ class HomeAssistant:
             raise HomeAssistantTimeoutError(f"Home Assistant request timed out after {self._timeout}s: POST {url}: {e}")
         except requests.RequestException as e:
             raise HomeAssistantClientError(f"Failed to set state for entity {entity_id} at {url}: {e}")
+
+        if _freeze:
+            self._freeze_template_entity(entity_id)
 
     def get_state(self, entity_id: str) -> Optional[dict[str, Any]]:
         """Get the state of an entity from Home Assistant.
@@ -725,6 +730,27 @@ class HomeAssistant:
         if errors:
             raise HomeAssistantClientError(f"Failed to restore config for {len(errors)} entities:\n" + "\n".join(errors))
 
+    def _freeze_template_entity(self, entity_id: str) -> None:
+        """Freeze a template entity to prevent re-evaluation from overwriting state overrides.
+
+        Sends a WebSocket command to the ha_test_harness integration to add the entity
+        to the frozen set. The monkey-patched TemplateEntity._handle_results checks this
+        set and skips re-evaluation for frozen entities. Idempotent.
+        """
+        payload: dict[str, Any] = {"id": 1, "type": "ha_test_harness/template/freeze", "entity_id": entity_id}
+        response = self._ws_send_receive(payload)
+        if not response.get("success"):
+            raise HomeAssistantClientError(f"Failed to freeze template entity {entity_id}: {response}")
+        self._frozen_template_entities.add(entity_id)
+
+    def _unfreeze_template_entity(self, entity_id: str) -> None:
+        """Unfreeze a template entity to restore normal template re-evaluation."""
+        payload: dict[str, Any] = {"id": 1, "type": "ha_test_harness/template/unfreeze", "entity_id": entity_id}
+        response = self._ws_send_receive(payload)
+        if not response.get("success"):
+            raise HomeAssistantClientError(f"Failed to unfreeze template entity {entity_id}: {response}")
+        self._frozen_template_entities.discard(entity_id)
+
     def restore_entity_states(self) -> None:
         """Restore all entity states modified by set_state() to their original values.
 
@@ -734,9 +760,17 @@ class HomeAssistant:
         it is removed. Tracking is cleared regardless of success or failure to prevent
         state pollution across tests.
 
+        Frozen template entities are unfrozen before state restoration to allow normal
+        template re-evaluation to resume.
+
         Raises:
             HomeAssistantClientError: If any state restoration fails.
         """
+        frozen_entities = list(self._frozen_template_entities)
+        self._frozen_template_entities.clear()
+        for entity_id in frozen_entities:
+            self._unfreeze_template_entity(entity_id)
+
         errors = []
 
         for entity_id, original_state in list(self._entity_original_state.items()):
@@ -746,7 +780,7 @@ class HomeAssistant:
                 else:
                     state_value = original_state.get("state", "")
                     attributes_value = original_state.get("attributes")
-                    self._apply_state(entity_id, state_value, attributes_value)
+                    self._apply_state(entity_id, state_value, attributes_value, _freeze=False)
             except HomeAssistantClientError as e:
                 errors.append(str(e))
 
