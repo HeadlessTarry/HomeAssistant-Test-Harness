@@ -72,10 +72,10 @@ class TestEntitiesManagedByTests:
         assert home_assistant.get_state(sample_entity) is None
 
     def test_entity_created_modified_then_removed(self, home_assistant: HomeAssistant) -> None:
-        """Test that teardown succeeds when an entity is created, modified, then removed.
+        """Test that test rollback succeeds when an entity is created, modified, then removed.
 
         This reproduces issue #165: when a test creates an entity via given_an_entity(),
-        modifies it via set_state(), then removes it via remove_entity(), teardown should
+        modifies it via set_state(), then removes it via remove_entity(), test rollback should
         not attempt to restore state for the removed entity.
         """
         entity_id = "switch.test_create_modify_remove"
@@ -94,7 +94,7 @@ class TestEntitiesManagedByTests:
         # Confirm the entity no longer exists
         assert home_assistant.get_state(entity_id) is None
 
-        # Test passes, but teardown should not fail with "Entity not found" errors
+        # Test passes, but test rollback should not fail with "Entity not found" errors
 
 
 class TestEntitiesWithAreasAndLabels:

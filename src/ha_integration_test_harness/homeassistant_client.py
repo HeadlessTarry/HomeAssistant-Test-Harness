@@ -424,8 +424,7 @@ class HomeAssistant:
             response = self._ws_send_receive(payload)
             if not response.get("success"):
                 raise HomeAssistantClientError(f"Failed to remove entity {entity_id} via ha_test_harness: {response}")
-            self._created_entities.discard(entity_id)
-            self._entity_original_state.pop(entity_id, None)
+            self._forget_entity(entity_id)
             return
 
         url = f"{self._base_url}/api/states/{entity_id}"
@@ -435,12 +434,23 @@ class HomeAssistant:
             # 404 is acceptable - entity doesn't exist, which is the desired outcome
             if response_http.status_code != 404:
                 response_http.raise_for_status()
-            self._created_entities.discard(entity_id)
-            self._entity_original_state.pop(entity_id, None)
+            self._forget_entity(entity_id)
         except requests.Timeout as e:
             raise HomeAssistantTimeoutError(f"Home Assistant request timed out after {self._timeout}s: DELETE {url}: {e}")
         except requests.RequestException as e:
             raise HomeAssistantClientError(f"Failed to remove entity {entity_id} from {url}: {e}")
+
+    def _forget_entity(self, entity_id: str) -> None:
+        """Remove an entity from internal tracking dictionaries.
+
+        Called after successful entity removal to prevent test rollback from attempting
+        to restore state or clean up an entity that no longer exists.
+
+        Args:
+            entity_id: The entity ID to remove from tracking.
+        """
+        self._created_entities.discard(entity_id)
+        self._entity_original_state.pop(entity_id, None)
 
     def call_action(self, domain: str, action: str, data: Optional[dict[str, Any]] = None) -> None:
         """Call a Home Assistant action (service).
