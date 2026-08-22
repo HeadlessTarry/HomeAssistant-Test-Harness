@@ -61,6 +61,20 @@ _Aliases_: client project, test suite
 The isolated execution context for tests — a Docker container running Home Assistant with deployed configuration. Created at session start, destroyed at session end.
 _Note_: Docker container is the infrastructure; HA instance is the application running inside it.
 
+**Assertion diagnostics**:
+Automatic capture of state change history when `assert_entity_state` fails.
+Queries the History API from test-start to assertion-failure, formats the transitions with timestamps and attribute deltas, and appends to the AssertionError message.
+_Avoid_: Failure diagnostics, error context, debug output
+
+**State change history**:
+A sequence of state/attribute transitions for an entity during a test, captured via the History API.
+Each transition includes: timestamp (relative to test-start + absolute), new state value, and attribute deltas (changed/added/removed attributes).
+_Avoid_: State log, event history, transition log
+
+**Test start time**:
+The timestamp captured at the start of each test (via `pytest_runtest_setup` hook). Used as the start of the History API query window for assertion diagnostics.
+_Avoid_: Test begin time, fixture start time
+
 ## Design Principles
 
 **Test isolation**:

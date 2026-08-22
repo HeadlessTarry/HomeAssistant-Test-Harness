@@ -3,6 +3,7 @@
 import json
 import logging
 import time
+from datetime import datetime
 from typing import Any, Callable, Optional, Union, overload
 from urllib.parse import urlparse, urlunparse
 
@@ -46,6 +47,7 @@ class HomeAssistant:
         self._known_area_ids: Optional[set[str]] = None
         self._known_label_ids: Optional[set[str]] = None
         self._is_unresponsive: bool = False
+        self._test_start_time: Optional[datetime] = None
 
     @property
     def is_unresponsive(self) -> bool:
@@ -290,10 +292,114 @@ class HomeAssistant:
                         else:
                             attr_details.append(f"'{k}': expected {expected_val!r}, got {v!r}")
                     failure_parts.append(f"attributes did not match ({'; '.join(attr_details)})")
-                raise AssertionError(f"Entity {entity_id} did not reach expected conditions within {timeout}s. " + "; ".join(failure_parts))
+                error_msg = f"Entity {entity_id} did not reach expected conditions within {timeout}s. " + "; ".join(failure_parts)
+                diagnostics = self._build_assertion_diagnostics(entity_id)
+                if diagnostics:
+                    error_msg += "\n" + diagnostics
+                raise AssertionError(error_msg)
 
             last_state = current_state
             time.sleep(1)
+
+    def _get_state_history(self, entity_id: str, start_time: datetime, end_time: datetime) -> Optional[list[dict[str, Any]]]:
+        from datetime import timezone
+
+        # Ensure timestamps are timezone-aware UTC
+        if start_time.tzinfo is None:
+            # Assume naive datetime is local time, convert to UTC
+            start_time = start_time.astimezone(timezone.utc)
+        if end_time.tzinfo is None:
+            # Assume naive datetime is local time, convert to UTC
+            end_time = end_time.astimezone(timezone.utc)
+
+        url = f"{self._base_url}/api/history/period/{start_time.isoformat()}"
+        params = {"filter_entity_id": entity_id, "end": end_time.isoformat()}
+        logger.info(f"Querying history for {entity_id}: {url} with params {params}")
+        try:
+            headers = {"Authorization": f"Bearer {self._access_token}"}
+            response = requests.get(url, headers=headers, params=params, timeout=self._timeout)
+            response.raise_for_status()
+            result: list[list[dict[str, Any]]] = response.json()
+            if result and len(result) > 0:
+                return result[0]
+            return []
+        except Exception as e:
+            logger.warning(f"Failed to get state history for {entity_id}: {e}")
+            return None
+
+    def _build_assertion_diagnostics(self, entity_id: str) -> str:
+        if self._test_start_time is None:
+            return ""
+        end_time = datetime.now()
+        history = self._get_state_history(entity_id, self._test_start_time, end_time)
+        return self._format_state_history(history, self._test_start_time)
+
+    def _format_timestamp(self, ts_str: str, test_start_time: datetime) -> tuple[str, str]:
+        try:
+            ts = datetime.fromisoformat(ts_str)
+        except Exception:
+            ts = test_start_time
+        if ts.tzinfo is not None:
+            ts = ts.replace(tzinfo=None)
+        relative = (ts - test_start_time).total_seconds()
+        relative_str = f"+{relative:.1f}s" if relative >= 0 else f"{relative:.1f}s"
+        absolute_str = ts.strftime("%H:%M:%S")
+        return absolute_str, relative_str
+
+    def _compute_attr_deltas(self, prev_attrs: dict[str, Any], current_attrs: dict[str, Any]) -> list[str]:
+        attr_parts: list[str] = []
+        all_attr_keys = set(prev_attrs.keys()) | set(current_attrs.keys())
+        for key in sorted(all_attr_keys):
+            old_val = prev_attrs.get(key)
+            new_val = current_attrs.get(key)
+            if key not in prev_attrs:
+                attr_parts.append(f"{key}: {new_val!r} (new)")
+            elif key not in current_attrs:
+                attr_parts.append(f"{key}: (removed)")
+            elif old_val != new_val:
+                attr_parts.append(f"{key}: {old_val!r}→{new_val!r}")
+        return attr_parts
+
+    def _get_state_prefix(self, state: str, index: int, total_transitions: int, max_transitions: int) -> str:
+        if state == "unavailable" and index > 0:
+            return " [unregistered]"
+        if index == 0 and total_transitions <= max_transitions and state in ("unavailable", "unknown"):
+            return " [created]"
+        return ""
+
+    def _format_state_history(self, history: Optional[list[dict[str, Any]]], test_start_time: datetime) -> str:
+        if history is None:
+            return "State change history unavailable."
+        if not history:
+            return "No state changes recorded during this test."
+
+        max_transitions = 10
+        total_transitions = len(history)
+        shown_entries = history[-max_transitions:] if total_transitions > max_transitions else history
+        omitted = total_transitions - max_transitions if total_transitions > max_transitions else 0
+
+        lines: list[str] = []
+        prev_attrs: dict[str, Any] = {}
+
+        for i, entry in enumerate(shown_entries):
+            ts_str = entry.get("last_changed", entry.get("last_updated", ""))
+            absolute_str, relative_str = self._format_timestamp(ts_str, test_start_time)
+            state = entry.get("state", "")
+            current_attrs = entry.get("attributes", {})
+            prefix = self._get_state_prefix(state, i, total_transitions, max_transitions)
+            attr_parts = self._compute_attr_deltas(prev_attrs, current_attrs)
+
+            line = f"  [{absolute_str}] ({relative_str}) {state}{prefix}"
+            if attr_parts:
+                line += f" | {', '.join(attr_parts)}"
+            lines.append(line)
+            prev_attrs = dict(current_attrs)
+
+        result_lines: list[str] = ["State change history:"]
+        if omitted > 0:
+            result_lines.append(f"  … and {omitted} more changes")
+        result_lines.extend(lines)
+        return "\n".join(result_lines)
 
     def remove_entity(self, entity_id: str) -> None:
         """Remove an entity from Home Assistant.
