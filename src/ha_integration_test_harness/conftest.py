@@ -229,11 +229,14 @@ def _skip_if_unresponsive(request: pytest.FixtureRequest) -> None:
     check), the test is skipped immediately. This prevents a cascade of ~40 timeout errors
     when HA becomes unresponsive mid-suite.
 
+    Also captures the test start time for assertion diagnostics.
+
     Args:
         request: The pytest request object for conditional fixture access.
     """
     if "home_assistant" in request.fixturenames:
         home_assistant: HomeAssistant = request.getfixturevalue("home_assistant")
+        home_assistant._test_start_time = datetime.now()
         if home_assistant.is_unresponsive:
             pytest.skip("Home Assistant is unresponsive")
 

@@ -302,8 +302,19 @@ class HomeAssistant:
             time.sleep(1)
 
     def _get_state_history(self, entity_id: str, start_time: datetime, end_time: datetime) -> Optional[list[dict[str, Any]]]:
+        from datetime import timezone
+
+        # Ensure timestamps are timezone-aware UTC
+        if start_time.tzinfo is None:
+            # Assume naive datetime is local time, convert to UTC
+            start_time = start_time.astimezone(timezone.utc)
+        if end_time.tzinfo is None:
+            # Assume naive datetime is local time, convert to UTC
+            end_time = end_time.astimezone(timezone.utc)
+
         url = f"{self._base_url}/api/history/period/{start_time.isoformat()}"
         params = {"filter_entity_id": entity_id, "end": end_time.isoformat()}
+        logger.info(f"Querying history for {entity_id}: {url} with params {params}")
         try:
             headers = {"Authorization": f"Bearer {self._access_token}"}
             response = requests.get(url, headers=headers, params=params, timeout=self._timeout)
@@ -312,7 +323,8 @@ class HomeAssistant:
             if result and len(result) > 0:
                 return result[0]
             return []
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Failed to get state history for {entity_id}: {e}")
             return None
 
     def _build_assertion_diagnostics(self, entity_id: str) -> str:
