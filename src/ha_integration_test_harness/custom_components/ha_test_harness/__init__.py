@@ -25,7 +25,7 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.components.template.template_entity import TemplateEntity
-from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
+from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse, callback
 from homeassistant.helpers import discovery
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.typing import ConfigType
@@ -119,6 +119,7 @@ def _apply_template_monkey_patch(hass: HomeAssistant) -> None:
     """
     original_handle_results = TemplateEntity._handle_results
 
+    @callback
     def _patched_handle_results(
         self: TemplateEntity,
         event: Any,
