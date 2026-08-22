@@ -23,11 +23,28 @@ pytest examples/
 pytest examples/test_basic_usage.py::test_entity_state_with_auto_cleanup
 ```
 
+## Worktree Setup
+
+**When creating a new worktree, always run `./setup_dev_env.sh` before making any changes.**
+
+Worktrees have isolated virtual environments. The setup script installs dependencies
+(including `pre-commit`) into the worktree's venv and configures git hooks. Skipping
+this step will cause pre-commit hooks to fail or be unavailable.
+
 ## Commit Workflow
 
-**Before committing, always run `./run_checks.sh` and fix all failures.**
-Never use `git commit --no-verify` to bypass pre-commit hooks.
-If pre-commit hooks fail, fix the underlying issues (formatting, linting, type errors) rather than skipping the checks.
+**Before pushing, always run `./run_checks.sh` and fix all failures.**
+
+Never bypass validation with individual commands like `uv run pre-commit run`
+or `git commit --no-verify`. The `./run_checks.sh` script performs comprehensive
+validation (pre-commit hooks, build, install test, example tests) that individual
+commands cannot replicate.
+
+If `./run_checks.sh` fails:
+
+1. Fix the underlying issues (formatting, linting, type errors, test failures)
+2. Re-run `./run_checks.sh` until all checks pass
+3. Only then push changes
 
 Pre-commit hooks enforce code quality standards (black, isort, flake8, mypy, yamllint, markdownlint). These must pass before code is merged.
 
