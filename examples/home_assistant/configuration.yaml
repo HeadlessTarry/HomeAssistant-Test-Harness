@@ -12,10 +12,6 @@ frontend:
 # Enable system health
 system_health:
 
-# Enable recorder for state history (used by assertion diagnostics)
-recorder:
-  commit_interval: 1  # Commit to database every 1 second
-
 timer:
   # Timer entity which is referenced by example tests
   test_timer:
