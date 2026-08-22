@@ -1,6 +1,7 @@
 """Pytest configuration and fixtures for integration tests."""
 
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Generator, Optional
 
@@ -19,6 +20,7 @@ _diagnostics_captured = False
 _failure_key: pytest.StashKey[bool] = pytest.StashKey()
 _docker_manager_key: pytest.StashKey[Optional[DockerComposeManager]] = pytest.StashKey()
 _home_assistant_key: pytest.StashKey[Optional[HomeAssistant]] = pytest.StashKey()
+_test_start_time_key: pytest.StashKey[Optional[datetime]] = pytest.StashKey()
 
 
 def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[Any]) -> None:
@@ -47,6 +49,15 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[Any]) -> 
 
         if not item.session.stash.get(_failure_key, False):
             item.session.stash[_failure_key] = True
+
+
+def pytest_runtest_setup(item: pytest.Item) -> None:
+    """Capture test start time for assertion diagnostics."""
+    now = datetime.now()
+    item.session.stash[_test_start_time_key] = now
+    home_assistant = item.session.stash.get(_home_assistant_key, None)
+    if home_assistant is not None:
+        home_assistant._test_start_time = now
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:

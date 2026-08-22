@@ -6,7 +6,7 @@ from datetime import timezone as _stdlib_timezone
 from typing import Any, Callable, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from dateutil.relativedelta import relativedelta
+from dateutil.relativedelta import relativedelta  # type: ignore[import-untyped]
 
 from .exceptions import TimeMachineError
 
