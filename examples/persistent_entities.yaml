@@ -26,6 +26,9 @@ input_boolean:
   state_garage_door:
     name: "[State] Garage Door"
     initial: false
+  state_template_sensor_source:
+    name: "[State] Template Sensor Source"
+    initial: false
 
 input_number:
   target_temperature:
@@ -112,3 +115,7 @@ template:
           - action: input_boolean.turn_off
             target:
               entity_id: input_boolean.state_garage_door
+  - sensor:
+      - name: "Template Test Sensor"
+        unique_id: "template_test_sensor"
+        state: "{{ 'on' if is_state('input_boolean.state_template_sensor_source', 'on') else 'off' }}"
