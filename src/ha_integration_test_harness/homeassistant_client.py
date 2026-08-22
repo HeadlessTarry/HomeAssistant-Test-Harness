@@ -424,6 +424,8 @@ class HomeAssistant:
             response = self._ws_send_receive(payload)
             if not response.get("success"):
                 raise HomeAssistantClientError(f"Failed to remove entity {entity_id} via ha_test_harness: {response}")
+            self._created_entities.discard(entity_id)
+            self._entity_original_state.pop(entity_id, None)
             return
 
         url = f"{self._base_url}/api/states/{entity_id}"
@@ -433,6 +435,8 @@ class HomeAssistant:
             # 404 is acceptable - entity doesn't exist, which is the desired outcome
             if response_http.status_code != 404:
                 response_http.raise_for_status()
+            self._created_entities.discard(entity_id)
+            self._entity_original_state.pop(entity_id, None)
         except requests.Timeout as e:
             raise HomeAssistantTimeoutError(f"Home Assistant request timed out after {self._timeout}s: DELETE {url}: {e}")
         except requests.RequestException as e:
