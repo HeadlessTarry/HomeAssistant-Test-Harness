@@ -4,16 +4,34 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 
 ## Conventions
 
-- **Create an issue**: `gh issue create --title "..." --body "..."`. Use a heredoc for multi-line bodies.
+- **Create an issue**: `gh issue create --title "..." --body-file -` with a heredoc piped to stdin.
 - **Read an issue**: `gh issue view <number> --comments`, filtering comments by `jq` and also fetching labels.
 - **List issues**: `gh issue list --state open --json number,title,body,labels,comments`
   with `--jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'`
   and appropriate `--label` and `--state` filters.
-- **Comment on an issue**: `gh issue comment <number> --body "..."`
+- **Comment on an issue**: `gh issue comment <number> --body-file -` with a heredoc piped to stdin.
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
 - **Close**: `gh issue close <number> --comment "..."`
 
 Infer the repo from `git remote -v` — `gh` does this automatically when run inside a clone.
+
+## Long content guidelines
+
+For any issue/comment body over ~500 characters:
+
+- **Always** use `--body-file -` with heredoc (never `--body "..."`)
+- This avoids JSON serialization issues when passing markdown through the tool layer
+- Quote the heredoc delimiter (`<< 'EOF'`) to prevent shell variable expansion
+
+Example:
+
+```bash
+gh issue comment 42 --body-file - << 'EOF'
+## Implementation Spec
+
+Long content with code blocks, lists, etc.
+EOF
+```
 
 ## Pull requests as a triage surface
 
@@ -61,4 +79,4 @@ Used by `/wayfinder`. The **map** is a single issue with **child** issues as tic
   (`issue_dependencies_summary.blocked_by > 0`, or an open issue in the `Blocked by` line)
   or an assignee; first in map order wins.
 - **Claim**: `gh issue edit <n> --add-assignee @me` — the session's first write.
-- **Resolve**: `gh issue comment <n> --body "<answer>"`, then `gh issue close <n>`, then append a context pointer (gist + link) to the map's Decisions-so-far.
+- **Resolve**: `gh issue comment <n> --body "<answer>"` (for short content), then `gh issue close <n>`, then append a context pointer (gist + link) to the map's Decisions-so-far.
