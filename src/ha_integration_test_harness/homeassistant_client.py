@@ -766,9 +766,10 @@ class HomeAssistant:
         Raises:
             HomeAssistantClientError: If any state restoration fails.
         """
-        for entity_id in list(self._frozen_template_entities):
-            self._unfreeze_template_entity(entity_id)
+        frozen_entities = list(self._frozen_template_entities)
         self._frozen_template_entities.clear()
+        for entity_id in frozen_entities:
+            self._unfreeze_template_entity(entity_id)
 
         errors = []
 
