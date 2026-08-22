@@ -322,68 +322,70 @@ class HomeAssistant:
         history = self._get_state_history(entity_id, self._test_start_time, end_time)
         return self._format_state_history(history, self._test_start_time)
 
+    def _format_timestamp(self, ts_str: str, test_start_time: datetime) -> tuple[str, str]:
+        try:
+            ts = datetime.fromisoformat(ts_str)
+        except Exception:
+            ts = test_start_time
+        if ts.tzinfo is not None:
+            ts = ts.replace(tzinfo=None)
+        relative = (ts - test_start_time).total_seconds()
+        relative_str = f"+{relative:.1f}s" if relative >= 0 else f"{relative:.1f}s"
+        absolute_str = ts.strftime("%H:%M:%S")
+        return absolute_str, relative_str
+
+    def _compute_attr_deltas(self, prev_attrs: dict[str, Any], current_attrs: dict[str, Any]) -> list[str]:
+        attr_parts: list[str] = []
+        all_attr_keys = set(prev_attrs.keys()) | set(current_attrs.keys())
+        for key in sorted(all_attr_keys):
+            old_val = prev_attrs.get(key)
+            new_val = current_attrs.get(key)
+            if key not in prev_attrs:
+                attr_parts.append(f"{key}: {new_val!r} (new)")
+            elif key not in current_attrs:
+                attr_parts.append(f"{key}: (removed)")
+            elif old_val != new_val:
+                attr_parts.append(f"{key}: {old_val!r}→{new_val!r}")
+        return attr_parts
+
+    def _get_state_prefix(self, state: str, index: int, total_transitions: int, max_transitions: int) -> str:
+        if state == "unavailable" and index > 0:
+            return " [unregistered]"
+        if index == 0 and total_transitions <= max_transitions and state in ("unavailable", "unknown"):
+            return " [created]"
+        return ""
+
     def _format_state_history(self, history: Optional[list[dict[str, Any]]], test_start_time: datetime) -> str:
         if history is None:
             return "State change history unavailable."
         if not history:
             return "No state changes recorded during this test."
 
-        lines: list[str] = []
-        prev_attrs: dict[str, Any] = {}
         max_transitions = 10
         total_transitions = len(history)
-        shown_entries = history
+        shown_entries = history[-max_transitions:] if total_transitions > max_transitions else history
+        omitted = total_transitions - max_transitions if total_transitions > max_transitions else 0
 
-        if total_transitions > max_transitions:
-            shown_entries = history[-max_transitions:]
-            omitted = total_transitions - max_transitions
+        lines: list[str] = []
+        prev_attrs: dict[str, Any] = {}
 
         for i, entry in enumerate(shown_entries):
             ts_str = entry.get("last_changed", entry.get("last_updated", ""))
-            try:
-                ts = datetime.fromisoformat(ts_str)
-            except Exception:
-                ts = test_start_time
-            if ts.tzinfo is not None:
-                ts = ts.replace(tzinfo=None)
-            relative = (ts - test_start_time).total_seconds()
-            relative_str = f"+{relative:.1f}s" if relative >= 0 else f"{relative:.1f}s"
-            absolute_str = ts.strftime("%H:%M:%S")
+            absolute_str, relative_str = self._format_timestamp(ts_str, test_start_time)
             state = entry.get("state", "")
             current_attrs = entry.get("attributes", {})
-
-            prefix = ""
-            if i == 0 and total_transitions <= max_transitions:
-                if state in ("unavailable", "unknown"):
-                    prefix = " [created]"
-            elif i == 0 and total_transitions > max_transitions:
-                pass
-
-            if state == "unavailable" and i > 0:
-                prefix = " [unregistered]"
-
-            attr_parts: list[str] = []
-            all_attr_keys = set(list(prev_attrs.keys()) + list(current_attrs.keys()))
-            for key in sorted(all_attr_keys):
-                old_val = prev_attrs.get(key)
-                new_val = current_attrs.get(key)
-                if key not in prev_attrs:
-                    attr_parts.append(f"{key}: {new_val!r} (new)")
-                elif key not in current_attrs:
-                    attr_parts.append(f"{key}: (removed)")
-                elif old_val != new_val:
-                    attr_parts.append(f"{key}: {old_val!r}\u2192{new_val!r}")
+            prefix = self._get_state_prefix(state, i, total_transitions, max_transitions)
+            attr_parts = self._compute_attr_deltas(prev_attrs, current_attrs)
 
             line = f"  [{absolute_str}] ({relative_str}) {state}{prefix}"
             if attr_parts:
                 line += f" | {', '.join(attr_parts)}"
             lines.append(line)
-
             prev_attrs = dict(current_attrs)
 
         result_lines: list[str] = ["State change history:"]
-        if total_transitions > max_transitions:
-            result_lines.append(f"  \u2026 and {omitted} more changes")
+        if omitted > 0:
+            result_lines.append(f"  … and {omitted} more changes")
         result_lines.extend(lines)
         return "\n".join(result_lines)
 
