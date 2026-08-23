@@ -8,6 +8,7 @@ import shlex
 import shutil
 import subprocess
 import tempfile
+import time
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -729,6 +730,159 @@ class DockerComposeManager:
         except Exception as e:
             logs.append(f"** ERROR ** Failed to test network reachability: {e}")
 
+    def _require_ha_container(self, logs: list[str], purpose: str) -> Optional[DockerContainer]:
+        """Get the HA container or log an error and return None."""
+        ha_container = self._get_container("homeassistant")
+        if not ha_container:
+            logs.append(f"\n** ERROR ** HA container not found for {purpose}")
+        return ha_container
+
+    def _exec_in_container(self, container: DockerContainer, cmd: str) -> str:
+        """Execute a command inside a container and return the output."""
+        result = subprocess.run(
+            ["docker", "exec", container.name, "sh", "-c", cmd],
+            capture_output=True,
+            text=True,
+        )
+        return result.stdout.strip() or result.stderr.strip() or "(no output)"
+
+    def _format_request_error(self, endpoint: str, error: Exception) -> str:
+        """Format a request exception consistently."""
+        if isinstance(error, requests.Timeout):
+            return f"{endpoint}: TIMEOUT (>10s)"
+        if isinstance(error, requests.ConnectionError):
+            return f"{endpoint}: CONNECTION REFUSED"
+        return f"{endpoint}: ERROR ({error})"
+
+    def _collect_docker_network_state(self, logs: list[str]) -> None:
+        """Capture Docker network inspect output for the test network."""
+        try:
+            network_name = f"{self._run_id}_default"
+            result = subprocess.run(
+                ["docker", "network", "inspect", network_name],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            logs.append("\n========== DOCKER NETWORK STATE ==========")
+            logs.append(result.stdout.strip())
+        except subprocess.CalledProcessError as e:
+            logs.append(f"\n** ERROR ** Failed to inspect Docker network: {e.stderr.strip()}")
+        except Exception as e:
+            logs.append(f"\n** ERROR ** Failed to inspect Docker network: {e}")
+
+    def _collect_tcp_connection_state(self, logs: list[str]) -> None:
+        """Capture TCP socket statistics from inside the HA container."""
+        try:
+            ha_container = self._require_ha_container(logs, "TCP state collection")
+            if not ha_container:
+                return
+            logs.append("\n========== TCP CONNECTION STATE (HA CONTAINER) ==========")
+            output = self._exec_in_container(ha_container, "netstat -tuln 2>/dev/null || ss -tuln 2>/dev/null || echo 'Neither netstat nor ss available in container'")
+            logs.append(output)
+        except Exception as e:
+            logs.append(f"\n** ERROR ** Failed to collect TCP connection state: {e}")
+
+    def _collect_multi_endpoint_api_probing(self, logs: list[str]) -> None:
+        """Probe multiple HA API endpoints with response times."""
+        try:
+            ha_container = self._require_ha_container(logs, "API probing")
+            if not ha_container:
+                return
+            if not ha_container.url:
+                logs.append("\n** ERROR ** HA container URL not found for API probing")
+                return
+            logs.append("\n========== API ENDPOINT TESTS ==========")
+            endpoints = ["/api/", "/api/states", "/"]
+            for endpoint in endpoints:
+                url = f"{ha_container.url}{endpoint}"
+                try:
+                    start = time.monotonic()
+                    response = requests.get(url, timeout=10)
+                    elapsed = time.monotonic() - start
+                    logs.append(f"{endpoint}: HTTP {response.status_code} ({elapsed:.2f}s)")
+                except Exception as e:
+                    logs.append(self._format_request_error(endpoint, e))
+        except Exception as e:
+            logs.append(f"\n** ERROR ** Failed to probe API endpoints: {e}")
+
+    def _collect_health_check_correlation(self, logs: list[str]) -> None:
+        """Compare Docker health check status with actual API reachability."""
+        try:
+            ha_container = self._require_ha_container(logs, "health check correlation")
+            if not ha_container:
+                return
+            logs.append("\n========== HEALTH CHECK VS API ==========")
+            inspect_result = subprocess.run(
+                ["docker", "inspect", "--format", "{{.State.Health.Status}}", ha_container.container_id],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            docker_health = inspect_result.stdout.strip()
+            logs.append(f"Docker Health: {docker_health}")
+            api_reachable = False
+            if ha_container.url:
+                try:
+                    response = requests.get(f"{ha_container.url}/api/", timeout=5)
+                    logs.append(f"API Reachable: yes (HTTP {response.status_code})")
+                    api_reachable = True
+                except Exception as e:
+                    logs.append(f"API Reachable: no ({e})")
+            else:
+                logs.append("API Reachable: unknown (no URL)")
+            docker_healthy = docker_health == "healthy"
+            if docker_healthy == api_reachable:
+                logs.append(f"Correlation: Docker health and API reachability agree (both {'healthy/reachable' if docker_healthy else 'unhealthy/unreachable'})")
+            else:
+                if docker_healthy:
+                    logs.append("WARNING: Docker reports healthy but API is unreachable — health check may be insufficient")
+                else:
+                    logs.append("WARNING: Docker reports unhealthy but API is reachable — health check may be too strict")
+        except subprocess.CalledProcessError as e:
+            logs.append(f"\n** ERROR ** Failed to get Docker health status: {e.stderr.strip()}")
+        except Exception as e:
+            logs.append(f"\n** ERROR ** Failed to correlate health check: {e}")
+
+    def _collect_extended_ha_logs(self, logs: list[str]) -> None:
+        """Capture extended HA container logs (last 500 lines and last 2 minutes)."""
+        try:
+            ha_container = self._require_ha_container(logs, "extended logs")
+            if not ha_container:
+                return
+            logs.append("\n========== EXTENDED HA LOGS (LAST 500 LINES + LAST 2 MINUTES) ==========")
+            log_flags = [("--tail=500", "Last 500 lines"), ("--since=2m", "Last 2 minutes")]
+            has_output = False
+            for flag, label in log_flags:
+                result = subprocess.run(
+                    ["docker", "logs", flag, ha_container.container_id],
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                )
+                output = result.stdout or result.stderr or ""
+                if output:
+                    logs.append(f"--- {label} ---")
+                    logs.append(output)
+                    has_output = True
+            if not has_output:
+                logs.append("<<empty>>")
+        except Exception as e:
+            logs.append(f"\n** ERROR ** Failed to collect extended HA logs: {e}")
+
+    def _collect_process_state(self, logs: list[str]) -> None:
+        """Capture process state inside the HA container."""
+        try:
+            ha_container = self._require_ha_container(logs, "process state collection")
+            if not ha_container:
+                return
+            logs.append("\n========== HA PROCESS STATE ==========")
+            output = self._exec_in_container(ha_container, "ps aux 2>/dev/null || ps -ef 2>/dev/null || echo 'ps not available in container'")
+            logs.append(output)
+        except Exception as e:
+            logs.append(f"\n** ERROR ** Failed to collect process state: {e}")
+
     def get_container_diagnostics(self, test_name: Optional[str] = None, test_duration: Optional[float] = None) -> str:
         """Dump logs and diagnostic information from all containers.
 
@@ -737,6 +891,12 @@ class DockerComposeManager:
         - Docker stats (CPU/memory usage)
         - Docker inspect (detailed state, restart count)
         - Network reachability test for Home Assistant API
+        - Docker network state (network inspect)
+        - TCP connection state inside HA container
+        - Multi-endpoint API probing with response times
+        - Health check vs API reachability correlation
+        - Extended HA logs (last 500 lines)
+        - Process state inside HA container
         - Current test name and duration (if provided)
 
         Args:
@@ -761,6 +921,12 @@ class DockerComposeManager:
         self._collect_docker_stats(logs)
         self._collect_docker_inspect(logs)
         self._collect_network_reachability(logs)
+        self._collect_docker_network_state(logs)
+        self._collect_tcp_connection_state(logs)
+        self._collect_multi_endpoint_api_probing(logs)
+        self._collect_health_check_correlation(logs)
+        self._collect_extended_ha_logs(logs)
+        self._collect_process_state(logs)
 
         logs.append("========== END DIAGNOSTICS ==========")
         return "\n".join(logs)
