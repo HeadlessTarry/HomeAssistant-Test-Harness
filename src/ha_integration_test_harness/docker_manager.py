@@ -730,6 +730,21 @@ class DockerComposeManager:
         except Exception as e:
             logs.append(f"** ERROR ** Failed to test network reachability: {e}")
 
+    def _require_ha_container(self, logs: list[str], purpose: str) -> Optional[DockerContainer]:
+        """Get the HA container or log an error and return None."""
+        ha_container = self._get_container("homeassistant")
+        if not ha_container:
+            logs.append(f"\n** ERROR ** HA container not found for {purpose}")
+        return ha_container
+
+    def _format_request_error(self, endpoint: str, error: Exception) -> str:
+        """Format a request exception consistently."""
+        if isinstance(error, requests.Timeout):
+            return f"{endpoint}: TIMEOUT (>10s)"
+        if isinstance(error, requests.ConnectionError):
+            return f"{endpoint}: CONNECTION REFUSED"
+        return f"{endpoint}: ERROR ({error})"
+
     def _collect_docker_network_state(self, logs: list[str]) -> None:
         """Capture Docker network inspect output for the test network."""
         try:
@@ -750,9 +765,8 @@ class DockerComposeManager:
     def _collect_tcp_connection_state(self, logs: list[str]) -> None:
         """Capture TCP socket statistics from inside the HA container."""
         try:
-            ha_container = self._get_container("homeassistant")
+            ha_container = self._require_ha_container(logs, "TCP state collection")
             if not ha_container:
-                logs.append("\n** ERROR ** HA container not found for TCP state collection")
                 return
             logs.append("\n========== TCP CONNECTION STATE (HA CONTAINER) ==========")
             result = subprocess.run(
@@ -768,9 +782,11 @@ class DockerComposeManager:
     def _collect_multi_endpoint_api_probing(self, logs: list[str]) -> None:
         """Probe multiple HA API endpoints with response times."""
         try:
-            ha_container = self._get_container("homeassistant")
+            ha_container = self._require_ha_container(logs, "API probing")
             if not ha_container or not ha_container.url:
-                logs.append("\n** ERROR ** HA container or URL not found for API probing")
+                if ha_container is None:
+                    return
+                logs.append("\n** ERROR ** HA container URL not found for API probing")
                 return
             logs.append("\n========== API ENDPOINT TESTS ==========")
             endpoints = ["/api/", "/api/states", "/"]
@@ -781,21 +797,16 @@ class DockerComposeManager:
                     response = requests.get(url, timeout=10)
                     elapsed = time.monotonic() - start
                     logs.append(f"{endpoint}: HTTP {response.status_code} ({elapsed:.2f}s)")
-                except requests.Timeout:
-                    logs.append(f"{endpoint}: TIMEOUT (>10s)")
-                except requests.ConnectionError:
-                    logs.append(f"{endpoint}: CONNECTION REFUSED")
                 except Exception as e:
-                    logs.append(f"{endpoint}: ERROR ({e})")
+                    logs.append(self._format_request_error(endpoint, e))
         except Exception as e:
             logs.append(f"\n** ERROR ** Failed to probe API endpoints: {e}")
 
     def _collect_health_check_correlation(self, logs: list[str]) -> None:
         """Compare Docker health check status with actual API reachability."""
         try:
-            ha_container = self._get_container("homeassistant")
+            ha_container = self._require_ha_container(logs, "health check correlation")
             if not ha_container:
-                logs.append("\n** ERROR ** HA container not found for health check correlation")
                 return
             logs.append("\n========== HEALTH CHECK VS API ==========")
             inspect_result = subprocess.run(
@@ -812,47 +823,63 @@ class DockerComposeManager:
                     response = requests.get(f"{ha_container.url}/api/", timeout=5)
                     logs.append(f"API Reachable: yes (HTTP {response.status_code})")
                     api_reachable = True
-                except requests.Timeout:
-                    logs.append("API Reachable: no (timeout)")
-                except requests.ConnectionError:
-                    logs.append("API Reachable: no (connection refused)")
                 except Exception as e:
                     logs.append(f"API Reachable: no ({e})")
             else:
                 logs.append("API Reachable: unknown (no URL)")
-            if docker_health == "healthy" and not api_reachable:
-                logs.append("WARNING: Docker reports healthy but API is unreachable — health check may be insufficient")
+            docker_healthy = docker_health == "healthy"
+            if docker_healthy == api_reachable:
+                logs.append(f"Correlation: Docker health and API reachability agree (both {'healthy/reachable' if docker_healthy else 'unhealthy/unreachable'})")
+            else:
+                if docker_healthy:
+                    logs.append("WARNING: Docker reports healthy but API is unreachable — health check may be insufficient")
+                else:
+                    logs.append("WARNING: Docker reports unhealthy but API is reachable — health check may be too strict")
         except subprocess.CalledProcessError as e:
             logs.append(f"\n** ERROR ** Failed to get Docker health status: {e.stderr.strip()}")
         except Exception as e:
             logs.append(f"\n** ERROR ** Failed to correlate health check: {e}")
 
     def _collect_extended_ha_logs(self, logs: list[str]) -> None:
-        """Capture extended HA container logs (last 500 lines)."""
+        """Capture extended HA container logs (last 500 lines and last 2 minutes)."""
         try:
-            ha_container = self._get_container("homeassistant")
+            ha_container = self._require_ha_container(logs, "extended logs")
             if not ha_container:
-                logs.append("\n** ERROR ** HA container not found for extended logs")
                 return
-            logs.append("\n========== EXTENDED HA LOGS (LAST 500 LINES) ==========")
-            result = subprocess.run(
+            logs.append("\n========== EXTENDED HA LOGS (LAST 500 LINES + LAST 2 MINUTES) ==========")
+            tail_result = subprocess.run(
                 ["docker", "logs", "--tail=500", ha_container.container_id],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
                 errors="replace",
             )
-            output = result.stdout or result.stderr or "<<empty>>"
-            logs.append(output)
+            since_result = subprocess.run(
+                ["docker", "logs", "--since=2m", ha_container.container_id],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+            tail_output = tail_result.stdout or tail_result.stderr or ""
+            since_output = since_result.stdout or since_result.stderr or ""
+            if tail_output or since_output:
+                if tail_output:
+                    logs.append("--- Last 500 lines ---")
+                    logs.append(tail_output)
+                if since_output:
+                    logs.append("--- Last 2 minutes ---")
+                    logs.append(since_output)
+            else:
+                logs.append("<<empty>>")
         except Exception as e:
             logs.append(f"\n** ERROR ** Failed to collect extended HA logs: {e}")
 
     def _collect_process_state(self, logs: list[str]) -> None:
         """Capture process state inside the HA container."""
         try:
-            ha_container = self._get_container("homeassistant")
+            ha_container = self._require_ha_container(logs, "process state collection")
             if not ha_container:
-                logs.append("\n** ERROR ** HA container not found for process state collection")
                 return
             logs.append("\n========== HA PROCESS STATE ==========")
             result = subprocess.run(

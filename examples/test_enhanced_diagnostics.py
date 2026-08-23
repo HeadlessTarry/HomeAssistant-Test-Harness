@@ -168,6 +168,7 @@ class TestCollectHealthCheckCorrelation:
         assert any("HEALTH CHECK VS API" in line for line in logs)
         assert any("Docker Health: healthy" in line for line in logs)
         assert any("API Reachable: yes" in line for line in logs)
+        assert any("Correlation:" in line and "agree" in line for line in logs)
 
     def test_detects_health_api_mismatch(self) -> None:
         manager = _make_manager()
@@ -179,7 +180,7 @@ class TestCollectHealthCheckCorrelation:
                 manager._collect_health_check_correlation(logs)
         assert any("Docker Health: healthy" in line for line in logs)
         assert any("API Reachable: no" in line for line in logs)
-        assert any("WARNING" in line for line in logs)
+        assert any("WARNING" in line and "healthy but API is unreachable" in line for line in logs)
 
     def test_handles_missing_ha_container(self) -> None:
         manager = _make_manager()
@@ -206,9 +207,13 @@ class TestCollectExtendedHaLogs:
         mock_result.stderr = ""
         with patch("ha_integration_test_harness.docker_manager.subprocess.run", return_value=mock_result) as mock_run:
             manager._collect_extended_ha_logs(logs)
-            call_args = mock_run.call_args[0][0]
-            assert "--tail=500" in call_args
-            assert "abc123" in call_args
+            assert mock_run.call_count == 2
+            first_call_args = mock_run.call_args_list[0][0][0]
+            second_call_args = mock_run.call_args_list[1][0][0]
+            assert "--tail=500" in first_call_args
+            assert "--since=2m" in second_call_args
+            assert "abc123" in first_call_args
+            assert "abc123" in second_call_args
         assert any("EXTENDED HA LOGS" in line for line in logs)
 
     def test_handles_empty_logs(self) -> None:
