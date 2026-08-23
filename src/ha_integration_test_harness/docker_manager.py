@@ -737,6 +737,15 @@ class DockerComposeManager:
             logs.append(f"\n** ERROR ** HA container not found for {purpose}")
         return ha_container
 
+    def _exec_in_container(self, container: DockerContainer, cmd: str) -> str:
+        """Execute a command inside a container and return the output."""
+        result = subprocess.run(
+            ["docker", "exec", container.name, "sh", "-c", cmd],
+            capture_output=True,
+            text=True,
+        )
+        return result.stdout.strip() or result.stderr.strip() or "(no output)"
+
     def _format_request_error(self, endpoint: str, error: Exception) -> str:
         """Format a request exception consistently."""
         if isinstance(error, requests.Timeout):
@@ -769,12 +778,7 @@ class DockerComposeManager:
             if not ha_container:
                 return
             logs.append("\n========== TCP CONNECTION STATE (HA CONTAINER) ==========")
-            result = subprocess.run(
-                ["docker", "exec", ha_container.name, "sh", "-c", "netstat -tuln 2>/dev/null || ss -tuln 2>/dev/null || echo 'Neither netstat nor ss available in container'"],
-                capture_output=True,
-                text=True,
-            )
-            output = result.stdout.strip() or result.stderr.strip() or "(no output)"
+            output = self._exec_in_container(ha_container, "netstat -tuln 2>/dev/null || ss -tuln 2>/dev/null || echo 'Neither netstat nor ss available in container'")
             logs.append(output)
         except Exception as e:
             logs.append(f"\n** ERROR ** Failed to collect TCP connection state: {e}")
@@ -783,9 +787,9 @@ class DockerComposeManager:
         """Probe multiple HA API endpoints with response times."""
         try:
             ha_container = self._require_ha_container(logs, "API probing")
-            if not ha_container or not ha_container.url:
-                if ha_container is None:
-                    return
+            if not ha_container:
+                return
+            if not ha_container.url:
                 logs.append("\n** ERROR ** HA container URL not found for API probing")
                 return
             logs.append("\n========== API ENDPOINT TESTS ==========")
@@ -847,30 +851,22 @@ class DockerComposeManager:
             if not ha_container:
                 return
             logs.append("\n========== EXTENDED HA LOGS (LAST 500 LINES + LAST 2 MINUTES) ==========")
-            tail_result = subprocess.run(
-                ["docker", "logs", "--tail=500", ha_container.container_id],
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-            )
-            since_result = subprocess.run(
-                ["docker", "logs", "--since=2m", ha_container.container_id],
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-            )
-            tail_output = tail_result.stdout or tail_result.stderr or ""
-            since_output = since_result.stdout or since_result.stderr or ""
-            if tail_output or since_output:
-                if tail_output:
-                    logs.append("--- Last 500 lines ---")
-                    logs.append(tail_output)
-                if since_output:
-                    logs.append("--- Last 2 minutes ---")
-                    logs.append(since_output)
-            else:
+            log_flags = [("--tail=500", "Last 500 lines"), ("--since=2m", "Last 2 minutes")]
+            has_output = False
+            for flag, label in log_flags:
+                result = subprocess.run(
+                    ["docker", "logs", flag, ha_container.container_id],
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                )
+                output = result.stdout or result.stderr or ""
+                if output:
+                    logs.append(f"--- {label} ---")
+                    logs.append(output)
+                    has_output = True
+            if not has_output:
                 logs.append("<<empty>>")
         except Exception as e:
             logs.append(f"\n** ERROR ** Failed to collect extended HA logs: {e}")
@@ -882,12 +878,7 @@ class DockerComposeManager:
             if not ha_container:
                 return
             logs.append("\n========== HA PROCESS STATE ==========")
-            result = subprocess.run(
-                ["docker", "exec", ha_container.name, "sh", "-c", "ps aux 2>/dev/null || ps -ef 2>/dev/null || echo 'ps not available in container'"],
-                capture_output=True,
-                text=True,
-            )
-            output = result.stdout.strip() or result.stderr.strip() or "(no output)"
+            output = self._exec_in_container(ha_container, "ps aux 2>/dev/null || ps -ef 2>/dev/null || echo 'ps not available in container'")
             logs.append(output)
         except Exception as e:
             logs.append(f"\n** ERROR ** Failed to collect process state: {e}")
