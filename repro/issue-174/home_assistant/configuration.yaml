@@ -1,0 +1,150 @@
+---
+homeassistant:
+  name: "Issue 174 Repro"
+  latitude: 53.441294
+  longitude: -2.253445
+  elevation: 33
+  unit_system: metric
+  time_zone: "Europe/London"
+  country: GB
+
+default_config:
+
+input_boolean:
+  state_test_light:
+    name: "[State] Test Light"
+  state_test_light_2:
+    name: "[State] Test Light 2"
+  state_test_light_3:
+    name: "[State] Test Light 3"
+  guests_staying:
+    name: "Guests Staying"
+  heating_enabled:
+    name: "Heating Enabled"
+
+timer:
+  delay_after_restart:
+    name: "Delay After Restart"
+    duration: "00:01:00"
+  auto_off_timer:
+    name: "Auto Off Timer"
+    duration: "03:00:00"
+  pause_timer:
+    name: "Pause Timer"
+    duration: "00:05:00"
+
+template:
+  - light:
+      - name: "Test Light"
+        unique_id: "test_light"
+        state: "{{ is_state('input_boolean.state_test_light', 'on') }}"
+        turn_on:
+          - action: input_boolean.turn_on
+            target:
+              entity_id: input_boolean.state_test_light
+        turn_off:
+          - action: input_boolean.turn_off
+            target:
+              entity_id: input_boolean.state_test_light
+
+      - name: "Test Light 2"
+        unique_id: "test_light_2"
+        state: "{{ is_state('input_boolean.state_test_light_2', 'on') }}"
+        turn_on:
+          - action: input_boolean.turn_on
+            target:
+              entity_id: input_boolean.state_test_light_2
+        turn_off:
+          - action: input_boolean.turn_off
+            target:
+              entity_id: input_boolean.state_test_light_2
+
+      - name: "Test Light 3"
+        unique_id: "test_light_3"
+        state: "{{ is_state('input_boolean.state_test_light_3', 'on') }}"
+        turn_on:
+          - action: input_boolean.turn_on
+            target:
+              entity_id: input_boolean.state_test_light_3
+        turn_off:
+          - action: input_boolean.turn_off
+            target:
+              entity_id: input_boolean.state_test_light_3
+
+  - sensor:
+      - name: "Test Time Sensor"
+        state: "{{ now().strftime('%H:%M:%S') }}"
+
+      - name: "Test Time Period"
+        state: >
+          {% if now().hour < 6 %}night
+          {% elif now().hour < 12 %}morning
+          {% elif now().hour < 18 %}afternoon
+          {% elif now().hour < 22 %}evening
+          {% else %}night
+          {% endif %}
+
+      - name: "Times Of Day"
+        state: >
+          {% if now().hour < 6 %}Night
+          {% elif now().hour < 9 %}Morning
+          {% elif now().hour < 12 %}Late Morning
+          {% elif now().hour < 14 %}Midday
+          {% elif now().hour < 17 %}Afternoon
+          {% elif now().hour < 20 %}Evening
+          {% elif now().hour < 22 %}Late Evening
+          {% else %}Night
+          {% endif %}
+
+      - name: "Daylight"
+        state: >
+          {% set h = now().hour %}
+          {% set m = now().minute %}
+          {% set t = h * 60 + m %}
+          {% set sunrise = 6 * 60 + 30 %}
+          {% set sunset = 20 * 60 + 0 %}
+          {{ 'on' if sunrise <= t <= sunset else 'off' }}
+
+      - name: "Someone At Home"
+        state: >
+          {% if now().hour >= 7 and now().hour < 23 %}on
+          {% else %}off
+          {% endif %}
+
+      - name: "Cheap Electricity"
+        state: >
+          {% set h = now().hour %}
+          {{ 'on' if h >= 2 and h < 5 else 'off' }}
+
+      - name: "Heating Preset"
+        state: >
+          {% if now().hour < 6 %}away
+          {% elif now().hour < 8 %}comfort
+          {% elif now().hour < 16 %}eco
+          {% elif now().hour < 22 %}comfort
+          {% else %}away
+          {% endif %}
+
+      - name: "Next Alarm"
+        state: >
+          {% set h = now().hour %}
+          {% set m = now().minute %}
+          {% if h < 7 %}{{ '07:00' }}
+          {% elif h < 19 %}{{ '19:30' }}
+          {% else %}{{ '07:00' }}
+          {% endif %}
+
+      - name: "Mockupancy Active"
+        state: >
+          {% set h = now().hour %}
+          {{ 'on' if h >= 17 and h < 23 else 'off' }}
+
+      - name: "Precipitation Next Hour"
+        state: >
+          {% set h = now().hour %}
+          {{ 'possible' if h % 3 == 0 else 'none' }}
+
+      - name: "Living Room TV On"
+        state: >
+          {% set h = now().hour %}
+          {{ 'on' if h >= 18 and h < 23 else 'off' }}

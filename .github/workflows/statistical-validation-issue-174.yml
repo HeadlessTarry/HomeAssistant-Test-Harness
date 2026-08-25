@@ -1,0 +1,66 @@
+---
+name: 🔬 Statistical Validation - Issue #174
+
+on:
+  push:
+    branches:
+      - repro/issue-174-reproduction
+  workflow_dispatch:
+
+jobs:
+  validate-fix:
+    name: 🧪 Validate v0.15.3 fix (50 runs)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: repro/issue-174
+    steps:
+      - name: ⤵️ Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🐍 Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: 🐍 Set up Python
+        run: uv python install 3.14
+
+      - name: 📦 Install dependencies
+        run: uv sync --all-extras
+
+      - name: 🧪 Run tests 50x (v0.15.3 fix, no workaround)
+        id: validate
+        run: |
+          mkdir -p results
+          passed=0
+          failed=0
+          for i in {1..50}; do
+            echo "=== Run $i/50 ==="
+            if uv run pytest tests/ --no-cov -v > "results/run_$i.log" 2>&1; then
+              passed=$((passed + 1))
+              echo "Run $i: PASSED"
+            else
+              failed=$((failed + 1))
+              echo "Run $i: FAILED"
+            fi
+          done
+          echo "passed=$passed" >> $GITHUB_OUTPUT
+          echo "failed=$failed" >> $GITHUB_OUTPUT
+          echo "## 🔬 Validation Results (v0.15.3 fix)" >> $GITHUB_STEP_SUMMARY
+          echo "- Passed: $passed/50" >> $GITHUB_STEP_SUMMARY
+          echo "- Failed: $failed/50" >> $GITHUB_STEP_SUMMARY
+          if [ $failed -eq 0 ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **v0.15.3 fix is effective**: All 50 runs passed without workaround" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **v0.15.3 fix insufficient**: $failed/50 runs failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: 📤 Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-logs
+          path: repro/issue-174/results/
