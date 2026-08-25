@@ -75,6 +75,11 @@ _Avoid_: State log, event history, transition log
 The timestamp captured at the start of each test (via `pytest_runtest_setup` hook). Used as the start of the History API query window for assertion diagnostics.
 _Avoid_: Test begin time, fixture start time
 
+**Stabilization**:
+The process of verifying Home Assistant is responsive after time manipulation, using health check polling with exponential backoff.
+Triggered automatically after time jumps via libfaketime to handle HA's asyncio event loop quirks.
+_Avoid_: Health check, recovery, wait period
+
 ## Design Principles
 
 **Test isolation**:
