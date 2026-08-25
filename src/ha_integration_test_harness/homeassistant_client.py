@@ -15,6 +15,12 @@ from .exceptions import HomeAssistantClientError, HomeAssistantTimeoutError
 logger = logging.getLogger(__name__)
 
 _HEALTH_CHECK_TIMEOUT = 3
+_HEALTH_CHECK_POLL_TIMEOUT = 10
+_HEALTH_CHECK_INITIAL_INTERVAL = 0.1
+_HEALTH_CHECK_MAX_INTERVAL = 1.0
+
+_API_RETRY_MAX_RETRIES = 3
+_API_RETRY_INITIAL_INTERVAL = 0.5
 
 # Sentinel object used to distinguish "not provided" from ``None`` in optional parameters.
 # Typed as ``Any`` so mypy accepts it as a default for parameters typed ``Optional[str]``
@@ -48,6 +54,51 @@ class HomeAssistant:
         self._known_label_ids: Optional[set[str]] = None
         self._is_unresponsive: bool = False
         self._test_start_time: Optional[datetime] = None
+
+    def _retry_on_transient_failure(self, func: Callable[[], Any], operation_description: str) -> Any:
+        """Retry an operation on transient network failures with exponential backoff.
+
+        Retries on ``requests.Timeout`` and ``requests.ConnectionError`` only.
+        Other exceptions are raised immediately.
+
+        Args:
+            func: The callable to retry.
+            operation_description: Description for error messages.
+
+        Returns:
+            The return value of the callable.
+
+        Raises:
+            HomeAssistantTimeoutError: If all retries are exhausted on timeout.
+            HomeAssistantClientError: If all retries are exhausted on connection error,
+                or if a non-transient exception occurs.
+        """
+        interval = _API_RETRY_INITIAL_INTERVAL
+        last_exception: Optional[Exception] = None
+
+        for attempt in range(_API_RETRY_MAX_RETRIES + 1):
+            try:
+                return func()
+            except requests.Timeout as e:
+                last_exception = e
+                if attempt < _API_RETRY_MAX_RETRIES:
+                    logger.debug(f"{operation_description}: timeout on attempt {attempt + 1}, retrying in {interval}s")
+                    time.sleep(interval)
+                    interval *= 2
+                else:
+                    raise HomeAssistantTimeoutError(f"{operation_description}: timed out after {_API_RETRY_MAX_RETRIES + 1} attempts: {e}")
+            except requests.ConnectionError as e:
+                last_exception = e
+                if attempt < _API_RETRY_MAX_RETRIES:
+                    logger.debug(f"{operation_description}: connection error on attempt {attempt + 1}, retrying in {interval}s")
+                    time.sleep(interval)
+                    interval *= 2
+                else:
+                    raise HomeAssistantClientError(f"{operation_description}: connection failed after {_API_RETRY_MAX_RETRIES + 1} attempts: {e}")
+            except requests.RequestException as e:
+                raise HomeAssistantClientError(f"{operation_description}: {e}")
+
+        raise HomeAssistantClientError(f"{operation_description}: failed after {_API_RETRY_MAX_RETRIES + 1} attempts: {last_exception}")
 
     @property
     def is_unresponsive(self) -> bool:
@@ -113,17 +164,17 @@ class HomeAssistant:
             return
 
         url = f"{self._base_url}/api/states/{entity_id}"
-        try:
-            headers = {"Authorization": f"Bearer {self._access_token}"}
-            body: dict[str, Any] = {"state": state}
-            if attributes is not None:
-                body["attributes"] = attributes
+        headers = {"Authorization": f"Bearer {self._access_token}"}
+        body: dict[str, Any] = {"state": state}
+        if attributes is not None:
+            body["attributes"] = attributes
+
+        def do_post() -> requests.Response:
             response_http = requests.post(url, json=body, headers=headers, timeout=self._timeout)
             response_http.raise_for_status()
-        except requests.Timeout as e:
-            raise HomeAssistantTimeoutError(f"Home Assistant request timed out after {self._timeout}s: POST {url}: {e}")
-        except requests.RequestException as e:
-            raise HomeAssistantClientError(f"Failed to set state for entity {entity_id} at {url}: {e}")
+            return response_http
+
+        self._retry_on_transient_failure(do_post, f"POST {url}")
 
         if _freeze:
             self._freeze_template_entity(entity_id)
@@ -142,21 +193,18 @@ class HomeAssistant:
             HomeAssistantClientError: If the request fails due to network issues or API errors.
         """
         url = f"{self._base_url}/api/states/{entity_id}"
-        try:
-            headers = {"Authorization": f"Bearer {self._access_token}"}
-            response = requests.get(url, headers=headers, timeout=self._timeout)
+        headers = {"Authorization": f"Bearer {self._access_token}"}
 
-            # 404 is acceptable - entity doesn't exist
+        def do_get() -> Optional[dict[str, Any]]:
+            response = requests.get(url, headers=headers, timeout=self._timeout)
             if response.status_code == 404:
                 return None
-
             response.raise_for_status()
             result: dict[str, Any] = response.json()
             return result
-        except requests.Timeout as e:
-            raise HomeAssistantTimeoutError(f"Home Assistant request timed out after {self._timeout}s: GET {url}: {e}")
-        except requests.RequestException as e:
-            raise HomeAssistantClientError(f"Failed to get state for entity {entity_id} from {url}: {e}")
+
+        result = self._retry_on_transient_failure(do_get, f"GET {url}")
+        return result if result is None else dict(result)
 
     def get_config(self) -> dict[str, Any]:
         """Fetch the Home Assistant configuration.
@@ -171,16 +219,16 @@ class HomeAssistant:
             HomeAssistantClientError: If the request fails due to network issues or API errors.
         """
         url = f"{self._base_url}/api/config"
-        try:
-            headers = {"Authorization": f"Bearer {self._access_token}"}
+        headers = {"Authorization": f"Bearer {self._access_token}"}
+
+        def do_get() -> dict[str, Any]:
             response = requests.get(url, headers=headers, timeout=self._timeout)
             response.raise_for_status()
             result: dict[str, Any] = response.json()
             return result
-        except requests.Timeout as e:
-            raise HomeAssistantTimeoutError(f"Home Assistant request timed out after {self._timeout}s: GET {url}: {e}")
-        except requests.RequestException as e:
-            raise HomeAssistantClientError(f"Failed to fetch Home Assistant config from {url}: {e}")
+
+        result = self._retry_on_transient_failure(do_get, f"GET {url}")
+        return dict(result)
 
     @overload
     def assert_entity_state(self, entity_id: str, expected_state: str, expected_attributes: Optional[dict[str, Any]] = None, timeout: int = 5) -> None: ...
@@ -428,17 +476,15 @@ class HomeAssistant:
             return
 
         url = f"{self._base_url}/api/states/{entity_id}"
-        try:
-            headers = {"Authorization": f"Bearer {self._access_token}"}
+        headers = {"Authorization": f"Bearer {self._access_token}"}
+
+        def do_delete() -> None:
             response_http = requests.delete(url, headers=headers, timeout=self._timeout)
-            # 404 is acceptable - entity doesn't exist, which is the desired outcome
             if response_http.status_code != 404:
                 response_http.raise_for_status()
-            self._forget_entity(entity_id)
-        except requests.Timeout as e:
-            raise HomeAssistantTimeoutError(f"Home Assistant request timed out after {self._timeout}s: DELETE {url}: {e}")
-        except requests.RequestException as e:
-            raise HomeAssistantClientError(f"Failed to remove entity {entity_id} from {url}: {e}")
+
+        self._retry_on_transient_failure(do_delete, f"DELETE {url}")
+        self._forget_entity(entity_id)
 
     def _forget_entity(self, entity_id: str) -> None:
         """Remove an entity from internal tracking dictionaries.
@@ -465,14 +511,13 @@ class HomeAssistant:
             HomeAssistantClientError: If the request fails due to network issues or API errors.
         """
         url = f"{self._base_url}/api/services/{domain}/{action}"
-        try:
-            headers = {"Authorization": f"Bearer {self._access_token}"}
+        headers = {"Authorization": f"Bearer {self._access_token}"}
+
+        def do_post() -> None:
             response = requests.post(url, json=data or {}, headers=headers, timeout=self._timeout)
             response.raise_for_status()
-        except requests.Timeout as e:
-            raise HomeAssistantTimeoutError(f"Home Assistant request timed out after {self._timeout}s: POST {url}: {e}")
-        except requests.RequestException as e:
-            raise HomeAssistantClientError(f"Failed to call action {domain}.{action} at {url}: {e}")
+
+        self._retry_on_transient_failure(do_post, f"POST {url}")
 
     def call_action_with_response(self, domain: str, action: str, data: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         """Call a Home Assistant action (service) and return its response.
@@ -490,25 +535,26 @@ class HomeAssistant:
             HomeAssistantClientError: If the request fails due to network issues or API errors.
         """
         url = f"{self._base_url}/api/services/{domain}/{action}?return_response"
-        try:
-            headers = {"Authorization": f"Bearer {self._access_token}"}
+        headers = {"Authorization": f"Bearer {self._access_token}"}
+
+        def do_post() -> dict[str, Any]:
             response = requests.post(url, json=data or {}, headers=headers, timeout=self._timeout)
             if response.status_code >= 400:
                 raise HomeAssistantClientError(f"Failed to call action {domain}.{action} at {url}: {response.status_code} {response.reason}\n" + f"Response body: {response.text}")
             response_json = response.json()
             service_response = response_json.get("service_response", response_json)
             assert isinstance(service_response, dict)
-            return service_response
-        except requests.Timeout as e:
-            raise HomeAssistantTimeoutError(f"Home Assistant request timed out after {self._timeout}s: POST {url}: {e}")
-        except requests.RequestException as e:
-            raise HomeAssistantClientError(f"Failed to call action {domain}.{action} at {url}: {e}")
+            return dict(service_response)
+
+        result = self._retry_on_transient_failure(do_post, f"POST {url}")
+        return dict(result)
 
     def check_health(self) -> bool:
         """Check whether Home Assistant is responsive.
 
-        Sends a lightweight ``GET /api/`` request with a 3-second timeout.
-        Returns ``True`` if the API responds (HTTP 200 or 401), ``False`` otherwise.
+        Polls ``GET /api/config`` with exponential backoff (0.1s → 1s max interval),
+        up to a total timeout of 10 seconds. Validates that the response is valid JSON.
+        Returns ``True`` if the API responds with HTTP 200 and valid JSON, ``False`` otherwise.
         On failure, sets ``_is_unresponsive`` to ``True`` so the pytest plugin can
         skip remaining tests and suppress futile cleanup.
 
@@ -518,17 +564,29 @@ class HomeAssistant:
         Returns:
             ``True`` if Home Assistant is responsive, ``False`` if unreachable.
         """
-        url = f"{self._base_url}/api/"
-        try:
-            headers = {"Authorization": f"Bearer {self._access_token}"}
-            response = requests.get(url, headers=headers, timeout=_HEALTH_CHECK_TIMEOUT)
-            if response.status_code in (200, 401):
-                return True
-            self._is_unresponsive = True
-            return False
-        except requests.RequestException:
-            self._is_unresponsive = True
-            return False
+        url = f"{self._base_url}/api/config"
+        headers = {"Authorization": f"Bearer {self._access_token}"}
+        start_time = time.time()
+        interval = _HEALTH_CHECK_INITIAL_INTERVAL
+
+        while True:
+            try:
+                response = requests.get(url, headers=headers, timeout=_HEALTH_CHECK_TIMEOUT)
+                if response.status_code == 200:
+                    response.json()
+                    return True
+                if response.status_code == 401:
+                    return True
+            except requests.RequestException:
+                pass
+
+            elapsed = time.time() - start_time
+            if elapsed >= _HEALTH_CHECK_POLL_TIMEOUT:
+                self._is_unresponsive = True
+                return False
+
+            time.sleep(interval)
+            interval = min(interval * 2, _HEALTH_CHECK_MAX_INTERVAL)
 
     def given_an_entity(self, entity_id: str, state: str, attributes: Optional[dict[str, Any]] = None) -> None:
         """Create a fully-registered entity for testing purposes with automatic cleanup.
