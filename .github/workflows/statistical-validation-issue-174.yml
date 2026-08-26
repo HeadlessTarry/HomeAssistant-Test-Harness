@@ -9,8 +9,12 @@ on:
 
 jobs:
   validate-baseline:
-    name: 🧪 Validate v0.15.1 baseline (50 runs)
+    name: "🧪 Run ${{ matrix.run_id }}/50"
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        run_id: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50]
     defaults:
       run:
         working-directory: repro/issue-174
@@ -29,80 +33,100 @@ jobs:
       - name: 📦 Install dependencies
         run: uv sync --all-extras
 
-      - name: 🧪 Run tests 50x (v0.15.1 pre-fix baseline)
+      - name: "🧪 Run tests (iteration ${{ matrix.run_id }})"
         id: validate
         run: |
           mkdir -p results
-          passed=0
-          failed=0
-          for i in {1..50}; do
-            echo "=== Run $i/50 ==="
-            if uv run pytest tests/ --no-cov -v > "results/run_$i.log" 2>&1; then
-              passed=$((passed + 1))
-              echo "Run $i: PASSED"
-            else
-              failed=$((failed + 1))
-              echo "Run $i: FAILED"
-              # Capture additional diagnostics on failure
-              echo "--- Capturing failure diagnostics for run $i ---" >> "results/run_$i.log"
-              docker ps -a >> "results/run_$i.log" 2>&1
-              echo "--- Docker container logs ---" >> "results/run_$i.log"
-              docker logs $(docker ps -aq --filter "name=homeassistant") >> "results/run_$i.log" 2>&1
-              echo "--- Container health check ---" >> "results/run_$i.log"
-              docker inspect $(docker ps -aq --filter "name=homeassistant") --format='{{.State.Health.Status}}' >> "results/run_$i.log" 2>&1
-              echo "--- Network diagnostics ---" >> "results/run_$i.log"
-              docker exec $(docker ps -aq --filter "name=homeassistant") ss -tuln >> "results/run_$i.log" 2>&1
-            fi
-          done
-          echo "passed=$passed" >> $GITHUB_OUTPUT
-          echo "failed=$failed" >> $GITHUB_OUTPUT
-          echo "## 🔬 Validation Results (v0.15.1 baseline)" >> $GITHUB_STEP_SUMMARY
-          echo "- Passed: $passed/50" >> $GITHUB_STEP_SUMMARY
-          echo "- Failed: $failed/50" >> $GITHUB_STEP_SUMMARY
-          if [ $failed -eq 0 ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "❌ **Issue not reproduced**: All 50 runs passed - reproduction may be insufficient" >> $GITHUB_STEP_SUMMARY
+          if uv run pytest tests/ --no-cov -v > "results/run_${{ matrix.run_id }}.log" 2>&1; then
+            echo "result=passed" >> $GITHUB_OUTPUT
+            echo "Run ${{ matrix.run_id }}: PASSED"
           else
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "✅ **Issue reproduced**: $failed/50 runs failed with v0.15.1" >> $GITHUB_STEP_SUMMARY
+            echo "result=failed" >> $GITHUB_OUTPUT
+            echo "Run ${{ matrix.run_id }}: FAILED"
+            # Capture additional diagnostics on failure
+            echo "--- Capturing failure diagnostics for run ${{ matrix.run_id }} ---" >> "results/run_${{ matrix.run_id }}.log"
+            docker ps -a >> "results/run_${{ matrix.run_id }}.log" 2>&1
+            echo "--- Docker container logs ---" >> "results/run_${{ matrix.run_id }}.log"
+            docker logs $(docker ps -aq --filter "name=homeassistant") >> "results/run_${{ matrix.run_id }}.log" 2>&1
+            echo "--- Container health check ---" >> "results/run_${{ matrix.run_id }}.log"
+            docker inspect $(docker ps -aq --filter "name=homeassistant") --format='{{.State.Health.Status}}' >> "results/run_${{ matrix.run_id }}.log" 2>&1
+            echo "--- Network diagnostics ---" >> "results/run_${{ matrix.run_id }}.log"
+            docker exec $(docker ps -aq --filter "name=homeassistant") ss -tuln >> "results/run_${{ matrix.run_id }}.log" 2>&1
           fi
 
-      - name: 📊 Analyze failures for asyncio blockage symptoms
-        if: ${{ failure() }}
-        run: |
-          echo "## 🔍 Failure Analysis" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+      - name: 📤 Upload log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: "run-${{ matrix.run_id }}-log"
+          path: "repro/issue-174/results/run_${{ matrix.run_id }}.log"
+          retention-days: 7
 
-          # Count specific error types
+  summarize-results:
+    name: "📊 Summarize Results"
+    runs-on: ubuntu-latest
+    needs: validate-baseline
+    if: always()
+    steps:
+      - name: ⤵️ Download all logs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "run-*-log"
+          path: results/
+          merge-multiple: true
+
+      - name: 📊 Analyze results
+        run: |
+          passed=0
+          failed=0
           timeout_errors=0
           connection_errors=0
           other_errors=0
 
-          for log in results/run_*.log; do
+          for log in results/*.log; do
             if [ -f "$log" ]; then
-              if grep -q "HomeAssistantTimeoutError" "$log"; then
-                timeout_errors=$((timeout_errors + 1))
-              elif grep -q "ConnectionError\|ReadTimeout" "$log"; then
-                connection_errors=$((connection_errors + 1))
-              elif grep -q "FAILED\|ERROR" "$log"; then
-                other_errors=$((other_errors + 1))
+              if grep -q "passed" "$log" && ! grep -q "failed" "$log"; then
+                passed=$((passed + 1))
+              else
+                failed=$((failed + 1))
+                # Analyze failure type
+                if grep -q "HomeAssistantTimeoutError" "$log"; then
+                  timeout_errors=$((timeout_errors + 1))
+                elif grep -q "ConnectionError\|ReadTimeout" "$log"; then
+                  connection_errors=$((connection_errors + 1))
+                elif grep -q "FAILED\|ERROR" "$log"; then
+                  other_errors=$((other_errors + 1))
+                fi
               fi
             fi
           done
 
-          echo "### Error Types Detected:" >> $GITHUB_STEP_SUMMARY
-          echo "- HomeAssistantTimeoutError: $timeout_errors runs" >> $GITHUB_STEP_SUMMARY
-          echo "- Connection/Read Timeout: $connection_errors runs" >> $GITHUB_STEP_SUMMARY
-          echo "- Other errors: $other_errors runs" >> $GITHUB_STEP_SUMMARY
+          echo "## 🔬 Validation Results (v0.15.1 baseline)" >> $GITHUB_STEP_SUMMARY
+          echo "- Passed: $passed/50" >> $GITHUB_STEP_SUMMARY
+          echo "- Failed: $failed/50" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if [ $timeout_errors -gt 0 ]; then
-            echo "✅ **Confirmed**: Failures show HomeAssistantTimeoutError pattern consistent with asyncio event loop blockage" >> $GITHUB_STEP_SUMMARY
+          if [ $failed -eq 0 ]; then
+            echo "❌ **Issue not reproduced**: All 50 runs passed - reproduction may be insufficient" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ **Issue reproduced**: $failed/50 runs failed with v0.15.1" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            echo "## 🔍 Failure Analysis" >> $GITHUB_STEP_SUMMARY
+            echo "### Error Types Detected:" >> $GITHUB_STEP_SUMMARY
+            echo "- HomeAssistantTimeoutError: $timeout_errors runs" >> $GITHUB_STEP_SUMMARY
+            echo "- Connection/Read Timeout: $connection_errors runs" >> $GITHUB_STEP_SUMMARY
+            echo "- Other errors: $other_errors runs" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            if [ $timeout_errors -gt 0 ]; then
+              echo "✅ **Confirmed**: Failures show HomeAssistantTimeoutError pattern consistent with asyncio event loop blockage" >> $GITHUB_STEP_SUMMARY
+            fi
           fi
 
-      - name: 📤 Upload logs
-        if: always()
+      - name: 📤 Upload consolidated logs
         uses: actions/upload-artifact@v4
         with:
-          name: validation-logs
-          path: repro/issue-174/results/
+          name: validation-logs-consolidated
+          path: results/
+          retention-days: 7
