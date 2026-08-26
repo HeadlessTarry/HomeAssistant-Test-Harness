@@ -16,12 +16,13 @@ unresponsive. API calls timeout with `ReadTimeout` errors after time jumps.
 
 ## 🎯 Purpose
 
-This reproduction suite validates whether v0.15.3's defensive stabilization is effective by:
+This reproduction suite validates whether the issue can be reproduced with v0.15.2 (pre-fix) by:
 
-1. Running **41+ tests** with **~134 time jumps** (matching the original issue's conditions)
+1. Running **25 tests** with **76 time jumps** (matching the original issue's conditions)
 2. Using **13+ template sensors** in the HA configuration (known to trigger the issue)
 3. Running the test suite **50 times** in CI to detect intermittent failures
-4. Running **WITHOUT any workaround** to test the fix in isolation
+4. Running **WITHOUT any workaround** to test the baseline behavior
+5. Using **v0.15.2** (pre-fix version) to establish a failure baseline
 
 ## 📊 Expected Results
 
@@ -29,8 +30,10 @@ Based on the original issue:
 
 | Configuration | Expected Pass Rate |
 |---------------|-------------------|
-| **Baseline (v1.15.2, no fix)** | ~64% (36% failure rate) |
-| **v0.15.3 fix (this test)** | Should be ~100% if fix is effective |
+| **v0.15.2 (this test)** | ~64% (36% failure rate) |
+| **v0.15.3 fix** | Should be ~100% if fix is effective |
+
+**Current test:** Using v0.15.2 to establish baseline failure rate.
 
 ## 🚀 Running Locally
 
@@ -75,37 +78,37 @@ repro/issue-174/
 │   ├── test_study_gaming_sign.py # 3 tests, ~18 time jumps
 │   └── test_maintenance.py   # 2 tests, ~12 time jumps
 ├── conftest.py               # Pytest configuration
-├── pyproject.toml            # Dependencies (uses v0.15.3)
+├── pyproject.toml            # Dependencies (uses v0.15.2 pre-fix)
 └── README.md                 # This file
 ```
 
-**Total:** 25 tests, ~167 time jumps (exceeds the 41+ tests, ~134 jumps from the original issue)
+**Total:** 25 tests, 76 time jumps
 
 ## 🔍 Interpreting Results
 
-### If all 50 runs pass
+### If some runs fail (expected with v0.15.2)
 
-✅ **v0.15.3 fix is effective** - The defensive stabilization (health checks, retries, automatic stabilization) successfully prevents the asyncio event loop blockage.
-
-**Next steps:**
-
-- Close issue #174 as resolved
-- Document the fix as validated
-- Consider removing the reproduction suite (or keep as regression test)
-
-### If some runs fail
-
-❌ **v0.15.3 fix is insufficient** - The issue still manifests despite the defensive stabilization.
+✅ **Issue reproduced** - The asyncio event loop blockage manifests with v0.15.2, confirming the reproduction is valid.
 
 **Next steps:**
 
-- Analyze failure logs to identify patterns
-- Consider alternative fixes (e.g., using HA's internal time service instead of libfaketime)
-- Reopen issue #174 with new evidence
+- Switch to v0.15.3 to validate the fix
+- Compare failure rates between versions
+
+### If all 50 runs pass (unexpected with v0.15.2)
+
+❌ **Issue not reproduced** - The test conditions may not be sufficient to trigger the issue, or the issue may be environment-specific.
+
+**Next steps:**
+
+- Increase number of time jumps
+- Add more template sensors
+- Check if issue requires specific CI conditions
 
 ## 📝 Notes
 
-- This reproduction runs **WITHOUT** the workaround (no `time.sleep()` after time jumps, no retry logic)
+- This reproduction uses **v0.15.2** (pre-fix) to establish a baseline failure rate
+- Runs **WITHOUT** the workaround (no `time.sleep()` after time jumps, no retry logic)
 - The tests are designed to be **deterministic** - failures are due to the asyncio blockage, not test logic
 - The HA configuration includes template sensors that re-evaluate on time changes, increasing the likelihood of triggering the issue
 - Local reproduction on Windows/Docker Desktop may not show the issue (it's CI-specific to GitHub Actions ubuntu-latest)
