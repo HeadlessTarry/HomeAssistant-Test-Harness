@@ -148,3 +148,85 @@ template:
         state: >
           {% set h = now().hour %}
           {{ 'on' if h >= 18 and h < 23 else 'off' }}
+
+      - name: "Time Chain Level 1"
+        state: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+
+      - name: "Time Chain Level 2"
+        state: "{{ states('sensor.time_chain_level_1') }}"
+
+      - name: "Time Chain Level 3"
+        state: >
+          {% set l1 = states('sensor.time_chain_level_1') %}
+          {% set l2 = states('sensor.time_chain_level_2') %}
+          {{ l1 ~ ' | ' ~ l2 if l1 != 'unknown' and l2 != 'unknown' else 'waiting' }}
+
+      - name: "Time Chain Level 4"
+        state: >
+          {% set l1 = states('sensor.time_chain_level_1') %}
+          {% set l2 = states('sensor.time_chain_level_2') %}
+          {% set l3 = states('sensor.time_chain_level_3') %}
+          {{ l1 ~ ' | ' ~ l2 ~ ' | ' ~ l3 if l1 != 'unknown' and l2 != 'unknown' and l3 != 'unknown' else 'waiting' }}
+
+      - name: "Time Chain Level 5"
+        state: >
+          {% set l1 = states('sensor.time_chain_level_1') %}
+          {% set l2 = states('sensor.time_chain_level_2') %}
+          {% set l3 = states('sensor.time_chain_level_3') %}
+          {% set l4 = states('sensor.time_chain_level_4') %}
+          {{ l1 ~ ' | ' ~ l2 ~ ' | ' ~ l3 ~ ' | ' ~ l4 if l1 != 'unknown' and l2 != 'unknown' and l3 != 'unknown' and l4 != 'unknown' else 'waiting' }}
+
+      - name: "Time Chain Level 6"
+        state: >
+          {% set l1 = states('sensor.time_chain_level_1') %}
+          {% set l2 = states('sensor.time_chain_level_2') %}
+          {% set l3 = states('sensor.time_chain_level_3') %}
+          {% set l4 = states('sensor.time_chain_level_4') %}
+          {% set l5 = states('sensor.time_chain_level_5') %}
+          {{ l1 ~ ' | ' ~ l2 ~ ' | ' ~ l3 ~ ' | ' ~ l4 ~ ' | ' ~ l5 if l1 != 'unknown' and l2 != 'unknown' and l3 != 'unknown' and l4 != 'unknown' and l5 != 'unknown' else 'waiting' }}
+
+      - name: "Time Chain Level 7"
+        state: >
+          {% set l1 = states('sensor.time_chain_level_1') %}
+          {% set l2 = states('sensor.time_chain_level_2') %}
+          {% set l3 = states('sensor.time_chain_level_3') %}
+          {% set l4 = states('sensor.time_chain_level_4') %}
+          {% set l5 = states('sensor.time_chain_level_5') %}
+          {% set l6 = states('sensor.time_chain_level_6') %}
+          {{ l1 ~ ' | ' ~ l2 ~ ' | ' ~ l3 ~ ' | ' ~ l4 ~ ' | ' ~ l5 ~ ' | ' ~ l6 if l1 != 'unknown' and l2 != 'unknown' and l3 != 'unknown' and l4 != 'unknown' and l5 != 'unknown' and l6 != 'unknown' else 'waiting' }}
+
+      - name: "Time Chain Level 8"
+        state: >
+          {% set l1 = states('sensor.time_chain_level_1') %}
+          {% set l2 = states('sensor.time_chain_level_2') %}
+          {% set l3 = states('sensor.time_chain_level_3') %}
+          {% set l4 = states('sensor.time_chain_level_4') %}
+          {% set l5 = states('sensor.time_chain_level_5') %}
+          {% set l6 = states('sensor.time_chain_level_6') %}
+          {% set l7 = states('sensor.time_chain_level_7') %}
+          {{ l1 ~ ' | ' ~ l2 ~ ' | ' ~ l3 ~ ' | ' ~ l4 ~ ' | ' ~ l5 ~ ' | ' ~ l6 ~ ' | ' ~ l7 if l1 != 'unknown' and l2 != 'unknown' and l3 != 'unknown' and l4 != 'unknown' and l5 != 'unknown' and l6 != 'unknown' and l7 != 'unknown' else 'waiting' }}
+
+      - name: "Time Chain Level 9"
+        state: >
+          {% set l1 = states('sensor.time_chain_level_1') %}
+          {% set l2 = states('sensor.time_chain_level_2') %}
+          {% set l3 = states('sensor.time_chain_level_3') %}
+          {% set l4 = states('sensor.time_chain_level_4') %}
+          {% set l5 = states('sensor.time_chain_level_5') %}
+          {% set l6 = states('sensor.time_chain_level_6') %}
+          {% set l7 = states('sensor.time_chain_level_7') %}
+          {% set l8 = states('sensor.time_chain_level_8') %}
+          {{ l1 ~ ' | ' ~ l2 ~ ' | ' ~ l3 ~ ' | ' ~ l4 ~ ' | ' ~ l5 ~ ' | ' ~ l6 ~ ' | ' ~ l7 ~ ' | ' ~ l8 if l1 != 'unknown' and l2 != 'unknown' and l3 != 'unknown' and l4 != 'unknown' and l5 != 'unknown' and l6 != 'unknown' and l7 != 'unknown' and l8 != 'unknown' else 'waiting' }}
+
+      - name: "Time Chain Level 10"
+        state: >
+          {% set l1 = states('sensor.time_chain_level_1') %}
+          {% set l2 = states('sensor.time_chain_level_2') %}
+          {% set l3 = states('sensor.time_chain_level_3') %}
+          {% set l4 = states('sensor.time_chain_level_4') %}
+          {% set l5 = states('sensor.time_chain_level_5') %}
+          {% set l6 = states('sensor.time_chain_level_6') %}
+          {% set l7 = states('sensor.time_chain_level_7') %}
+          {% set l8 = states('sensor.time_chain_level_8') %}
+          {% set l9 = states('sensor.time_chain_level_9') %}
+          {{ l1 ~ ' | ' ~ l2 ~ ' | ' ~ l3 ~ ' | ' ~ l4 ~ ' | ' ~ l5 ~ ' | ' ~ l6 ~ ' | ' ~ l7 ~ ' | ' ~ l8 ~ ' | ' ~ l9 if l1 != 'unknown' and l2 != 'unknown' and l3 != 'unknown' and l4 != 'unknown' and l5 != 'unknown' and l6 != 'unknown' and l7 != 'unknown' and l8 != 'unknown' and l9 != 'unknown' else 'waiting' }}

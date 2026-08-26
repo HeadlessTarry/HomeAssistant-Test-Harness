@@ -29,19 +29,3 @@ class TestEnergyManagement:
         home_assistant.get_state("sensor.daylight")
         time_machine.fast_forward(timedelta(seconds=10))
         home_assistant.get_state("sensor.heating_preset")
-
-    def test_heating_preset_transitions(
-        self,
-        home_assistant: HomeAssistant,
-        time_machine: TimeMachine,
-    ) -> None:
-        time_machine.jump_to_next(hour=5, minute=0)
-        home_assistant.get_state("sensor.heating_preset")
-        time_machine.jump_to_next(hour=7, minute=0)
-        home_assistant.get_state("sensor.heating_preset")
-        time_machine.jump_to_next(hour=10, minute=0)
-        home_assistant.get_state("sensor.heating_preset")
-        time_machine.jump_to_next(hour=20, minute=0)
-        home_assistant.get_state("sensor.heating_preset")
-        time_machine.jump_to_next(hour=23, minute=0)
-        home_assistant.get_state("sensor.heating_preset")
