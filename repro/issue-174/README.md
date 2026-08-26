@@ -16,13 +16,13 @@ unresponsive. API calls timeout with `ReadTimeout` errors after time jumps.
 
 ## 🎯 Purpose
 
-This reproduction suite validates whether the issue can be reproduced with v0.15.1 (pre-fix) by:
+This reproduction suite validates whether the issue can be reproduced with v1.15.2 (pre-fix) by:
 
 1. Running **25 tests** with **76 time jumps** (matching the original issue's conditions)
 2. Using **13+ template sensors** in the HA configuration (known to trigger the issue)
 3. Running the test suite **50 times** in CI to detect intermittent failures
 4. Running **WITHOUT any workaround** to test the baseline behavior
-5. Using **v0.15.1** (pre-fix version) to establish a failure baseline
+5. Using **v1.15.2** (commit d0c86a8, pre-fix version) to establish a failure baseline
 
 ## 📊 Expected Results
 
@@ -30,10 +30,10 @@ Based on the original issue:
 
 | Configuration | Expected Pass Rate |
 |---------------|-------------------|
-| **v0.15.1 (this test)** | ~64% (36% failure rate) |
+| **v1.15.2 (this test)** | ~64% (36% failure rate) |
 | **v0.15.3 fix** | Should be ~100% if fix is effective |
 
-**Current test:** Using v0.15.1 to establish baseline failure rate.
+**Current test:** Using v1.15.2 (commit d0c86a8) to establish baseline failure rate.
 
 ## 🚀 Running Locally
 
@@ -78,7 +78,7 @@ repro/issue-174/
 │   ├── test_study_gaming_sign.py # 3 tests, ~18 time jumps
 │   └── test_maintenance.py   # 2 tests, ~12 time jumps
 ├── conftest.py               # Pytest configuration
-├── pyproject.toml            # Dependencies (uses v0.15.1 pre-fix)
+├── pyproject.toml            # Dependencies (uses v1.15.2 pre-fix commit d0c86a8)
 └── README.md                 # This file
 ```
 
@@ -86,16 +86,16 @@ repro/issue-174/
 
 ## 🔍 Interpreting Results
 
-### If some runs fail (expected with v0.15.1)
+### If some runs fail (expected with v1.15.2)
 
-✅ **Issue reproduced** - The asyncio event loop blockage manifests with v0.15.1, confirming the reproduction is valid.
+✅ **Issue reproduced** - The asyncio event loop blockage manifests with v1.15.2, confirming the reproduction is valid.
 
 **Next steps:**
 
 - Switch to v0.15.3 to validate the fix
 - Compare failure rates between versions
 
-### If all 50 runs pass (unexpected with v0.15.1)
+### If all 50 runs pass (unexpected with v1.15.2)
 
 ❌ **Issue not reproduced** - The test conditions may not be sufficient to trigger the issue, or the issue may be environment-specific.
 
@@ -107,7 +107,7 @@ repro/issue-174/
 
 ## 📝 Notes
 
-- This reproduction uses **v0.15.1** (pre-fix) to establish a baseline failure rate
+- This reproduction uses **v1.15.2** (commit d0c86a8, pre-fix) to establish a baseline failure rate
 - Runs **WITHOUT** the workaround (no `time.sleep()` after time jumps, no retry logic)
 - The tests are designed to be **deterministic** - failures are due to the asyncio blockage, not test logic
 - The HA configuration includes template sensors that re-evaluate on time changes, increasing the likelihood of triggering the issue
