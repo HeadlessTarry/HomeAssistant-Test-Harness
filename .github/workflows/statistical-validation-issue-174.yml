@@ -9,7 +9,7 @@ on:
 
 jobs:
   validate-baseline:
-    name: 🧪 Validate v1.15.2 baseline (50 runs)
+    name: 🧪 Validate v0.15.1 baseline (50 runs)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -29,7 +29,7 @@ jobs:
       - name: 📦 Install dependencies
         run: uv sync --all-extras
 
-      - name: 🧪 Run tests 50x (v1.15.2 pre-fix baseline)
+      - name: 🧪 Run tests 50x (v0.15.1 pre-fix baseline)
         id: validate
         run: |
           mkdir -p results
@@ -47,7 +47,7 @@ jobs:
           done
           echo "passed=$passed" >> $GITHUB_OUTPUT
           echo "failed=$failed" >> $GITHUB_OUTPUT
-          echo "## 🔬 Validation Results (v1.15.2 baseline)" >> $GITHUB_STEP_SUMMARY
+          echo "## 🔬 Validation Results (v0.15.1 baseline)" >> $GITHUB_STEP_SUMMARY
           echo "- Passed: $passed/50" >> $GITHUB_STEP_SUMMARY
           echo "- Failed: $failed/50" >> $GITHUB_STEP_SUMMARY
           if [ $failed -eq 0 ]; then
@@ -55,7 +55,7 @@ jobs:
             echo "❌ **Issue not reproduced**: All 50 runs passed - reproduction may be insufficient" >> $GITHUB_STEP_SUMMARY
           else
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "✅ **Issue reproduced**: $failed/50 runs failed with v1.15.2" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **Issue reproduced**: $failed/50 runs failed with v0.15.1" >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: 📤 Upload logs

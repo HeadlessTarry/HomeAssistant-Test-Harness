@@ -1,7 +1,7 @@
 [project]
 name = "issue-174-repro"
 version = "0.1.0"
-description = "Reproduction of HA asyncio event loop blockage (issue #174) - using v1.15.2 (pre-fix commit d0c86a8)"
+description = "Reproduction of HA asyncio event loop blockage (issue #174) - using v0.15.1 (pre-fix)"
 requires-python = ">=3.14.5"
 
 [build-system]
@@ -13,7 +13,7 @@ dev = [
     "pytest",
     "pytest-cov",
     "tzdata",
-    "ha-integration-test-harness @ git+https://github.com/HeadlessTarry/HomeAssistant-Test-Harness.git@d0c86a8"
+    "ha-integration-test-harness @ git+https://github.com/HeadlessTarry/HomeAssistant-Test-Harness.git@v0.15.1"
 ]
 
 [tool.setuptools.packages.find]
