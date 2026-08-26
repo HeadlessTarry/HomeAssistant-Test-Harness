@@ -167,60 +167,125 @@ template:
       - name: "Time Tree L1 E"
         state: "{{ states('sensor.time_tree_base') }}"
 
+      - name: "Time Tree L1 F"
+        state: "{{ states('sensor.time_tree_base') }}"
+
+      - name: "Time Tree L1 G"
+        state: "{{ states('sensor.time_tree_base') }}"
+
       - name: "Time Tree L2 A"
         state: >
           {% set a = states('sensor.time_tree_l1_a') %}
           {% set b = states('sensor.time_tree_l1_b') %}
-          {{ a ~ ' | ' ~ b if a != 'unknown' and b != 'unknown' else 'waiting' }}
+          {% set c = states('sensor.time_tree_l1_c') %}
+          {{ a ~ ' | ' ~ b ~ ' | ' ~ c if a != 'unknown' and b != 'unknown' and c != 'unknown' else 'waiting' }}
 
       - name: "Time Tree L2 B"
         state: >
           {% set b = states('sensor.time_tree_l1_b') %}
           {% set c = states('sensor.time_tree_l1_c') %}
-          {{ b ~ ' | ' ~ c if b != 'unknown' and c != 'unknown' else 'waiting' }}
+          {% set d = states('sensor.time_tree_l1_d') %}
+          {{ b ~ ' | ' ~ c ~ ' | ' ~ d if b != 'unknown' and c != 'unknown' and d != 'unknown' else 'waiting' }}
 
       - name: "Time Tree L2 C"
         state: >
           {% set c = states('sensor.time_tree_l1_c') %}
           {% set d = states('sensor.time_tree_l1_d') %}
-          {{ c ~ ' | ' ~ d if c != 'unknown' and d != 'unknown' else 'waiting' }}
+          {% set e = states('sensor.time_tree_l1_e') %}
+          {{ c ~ ' | ' ~ d ~ ' | ' ~ e if c != 'unknown' and d != 'unknown' and e != 'unknown' else 'waiting' }}
 
       - name: "Time Tree L2 D"
         state: >
           {% set d = states('sensor.time_tree_l1_d') %}
           {% set e = states('sensor.time_tree_l1_e') %}
-          {{ d ~ ' | ' ~ e if d != 'unknown' and e != 'unknown' else 'waiting' }}
+          {% set f = states('sensor.time_tree_l1_f') %}
+          {{ d ~ ' | ' ~ e ~ ' | ' ~ f if d != 'unknown' and e != 'unknown' and f != 'unknown' else 'waiting' }}
 
       - name: "Time Tree L2 E"
         state: >
           {% set e = states('sensor.time_tree_l1_e') %}
+          {% set f = states('sensor.time_tree_l1_f') %}
+          {% set g = states('sensor.time_tree_l1_g') %}
+          {{ e ~ ' | ' ~ f ~ ' | ' ~ g if e != 'unknown' and f != 'unknown' and g != 'unknown' else 'waiting' }}
+
+      - name: "Time Tree L2 F"
+        state: >
+          {% set f = states('sensor.time_tree_l1_f') %}
+          {% set g = states('sensor.time_tree_l1_g') %}
           {% set a = states('sensor.time_tree_l1_a') %}
-          {{ e ~ ' | ' ~ a if e != 'unknown' and a != 'unknown' else 'waiting' }}
+          {{ f ~ ' | ' ~ g ~ ' | ' ~ a if f != 'unknown' and g != 'unknown' and a != 'unknown' else 'waiting' }}
+
+      - name: "Time Tree L2 G"
+        state: >
+          {% set g = states('sensor.time_tree_l1_g') %}
+          {% set a = states('sensor.time_tree_l1_a') %}
+          {% set b = states('sensor.time_tree_l1_b') %}
+          {{ g ~ ' | ' ~ a ~ ' | ' ~ b if g != 'unknown' and a != 'unknown' and b != 'unknown' else 'waiting' }}
 
       - name: "Time Tree L3 A"
         state: >
           {% set l2a = states('sensor.time_tree_l2_a') %}
           {% set l2b = states('sensor.time_tree_l2_b') %}
           {% set l2c = states('sensor.time_tree_l2_c') %}
-          {{ l2a ~ ' | ' ~ l2b ~ ' | ' ~ l2c if l2a != 'unknown' and l2b != 'unknown' and l2c != 'unknown' else 'waiting' }}
+          {% set l2d = states('sensor.time_tree_l2_d') %}
+          {{ l2a ~ ' | ' ~ l2b ~ ' | ' ~ l2c ~ ' | ' ~ l2d if l2a != 'unknown' and l2b != 'unknown' and l2c != 'unknown' and l2d != 'unknown' else 'waiting' }}
 
       - name: "Time Tree L3 B"
         state: >
           {% set l2b = states('sensor.time_tree_l2_b') %}
           {% set l2c = states('sensor.time_tree_l2_c') %}
           {% set l2d = states('sensor.time_tree_l2_d') %}
-          {{ l2b ~ ' | ' ~ l2c ~ ' | ' ~ l2d if l2b != 'unknown' and l2c != 'unknown' and l2d != 'unknown' else 'waiting' }}
+          {% set l2e = states('sensor.time_tree_l2_e') %}
+          {{ l2b ~ ' | ' ~ l2c ~ ' | ' ~ l2d ~ ' | ' ~ l2e if l2b != 'unknown' and l2c != 'unknown' and l2d != 'unknown' and l2e != 'unknown' else 'waiting' }}
 
       - name: "Time Tree L3 C"
         state: >
           {% set l2c = states('sensor.time_tree_l2_c') %}
           {% set l2d = states('sensor.time_tree_l2_d') %}
           {% set l2e = states('sensor.time_tree_l2_e') %}
-          {{ l2c ~ ' | ' ~ l2d ~ ' | ' ~ l2e if l2c != 'unknown' and l2d != 'unknown' and l2e != 'unknown' else 'waiting' }}
+          {% set l2f = states('sensor.time_tree_l2_f') %}
+          {{ l2c ~ ' | ' ~ l2d ~ ' | ' ~ l2e ~ ' | ' ~ l2f if l2c != 'unknown' and l2d != 'unknown' and l2e != 'unknown' and l2f != 'unknown' else 'waiting' }}
 
-      - name: "Time Tree Top"
+      - name: "Time Tree L3 D"
+        state: >
+          {% set l2d = states('sensor.time_tree_l2_d') %}
+          {% set l2e = states('sensor.time_tree_l2_e') %}
+          {% set l2f = states('sensor.time_tree_l2_f') %}
+          {% set l2g = states('sensor.time_tree_l2_g') %}
+          {{ l2d ~ ' | ' ~ l2e ~ ' | ' ~ l2f ~ ' | ' ~ l2g if l2d != 'unknown' and l2e != 'unknown' and l2f != 'unknown' and l2g != 'unknown' else 'waiting' }}
+
+      - name: "Time Tree L3 E"
+        state: >
+          {% set l2e = states('sensor.time_tree_l2_e') %}
+          {% set l2f = states('sensor.time_tree_l2_f') %}
+          {% set l2g = states('sensor.time_tree_l2_g') %}
+          {% set l2a = states('sensor.time_tree_l2_a') %}
+          {{ l2e ~ ' | ' ~ l2f ~ ' | ' ~ l2g ~ ' | ' ~ l2a if l2e != 'unknown' and l2f != 'unknown' and l2g != 'unknown' and l2a != 'unknown' else 'waiting' }}
+
+      - name: "Time Tree L4 A"
         state: >
           {% set l3a = states('sensor.time_tree_l3_a') %}
           {% set l3b = states('sensor.time_tree_l3_b') %}
           {% set l3c = states('sensor.time_tree_l3_c') %}
           {{ l3a ~ ' | ' ~ l3b ~ ' | ' ~ l3c if l3a != 'unknown' and l3b != 'unknown' and l3c != 'unknown' else 'waiting' }}
+
+      - name: "Time Tree L4 B"
+        state: >
+          {% set l3b = states('sensor.time_tree_l3_b') %}
+          {% set l3c = states('sensor.time_tree_l3_c') %}
+          {% set l3d = states('sensor.time_tree_l3_d') %}
+          {{ l3b ~ ' | ' ~ l3c ~ ' | ' ~ l3d if l3b != 'unknown' and l3c != 'unknown' and l3d != 'unknown' else 'waiting' }}
+
+      - name: "Time Tree L4 C"
+        state: >
+          {% set l3c = states('sensor.time_tree_l3_c') %}
+          {% set l3d = states('sensor.time_tree_l3_d') %}
+          {% set l3e = states('sensor.time_tree_l3_e') %}
+          {{ l3c ~ ' | ' ~ l3d ~ ' | ' ~ l3e if l3c != 'unknown' and l3d != 'unknown' and l3e != 'unknown' else 'waiting' }}
+
+      - name: "Time Tree Top"
+        state: >
+          {% set l4a = states('sensor.time_tree_l4_a') %}
+          {% set l4b = states('sensor.time_tree_l4_b') %}
+          {% set l4c = states('sensor.time_tree_l4_c') %}
+          {{ l4a ~ ' | ' ~ l4b ~ ' | ' ~ l4c if l4a != 'unknown' and l4b != 'unknown' and l4c != 'unknown' else 'waiting' }}
