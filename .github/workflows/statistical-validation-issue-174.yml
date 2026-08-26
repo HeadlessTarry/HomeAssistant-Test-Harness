@@ -1,5 +1,5 @@
 ---
-name: 🔬 Statistical Validation - Issue #174
+name: "🔬 Statistical Validation - Issue #174"
 
 on:
   push:
@@ -43,6 +43,15 @@ jobs:
             else
               failed=$((failed + 1))
               echo "Run $i: FAILED"
+              # Capture additional diagnostics on failure
+              echo "--- Capturing failure diagnostics for run $i ---" >> "results/run_$i.log"
+              docker ps -a >> "results/run_$i.log" 2>&1
+              echo "--- Docker container logs ---" >> "results/run_$i.log"
+              docker logs $(docker ps -aq --filter "name=homeassistant") >> "results/run_$i.log" 2>&1
+              echo "--- Container health check ---" >> "results/run_$i.log"
+              docker inspect $(docker ps -aq --filter "name=homeassistant") --format='{{.State.Health.Status}}' >> "results/run_$i.log" 2>&1
+              echo "--- Network diagnostics ---" >> "results/run_$i.log"
+              docker exec $(docker ps -aq --filter "name=homeassistant") ss -tuln >> "results/run_$i.log" 2>&1
             fi
           done
           echo "passed=$passed" >> $GITHUB_OUTPUT
@@ -56,6 +65,39 @@ jobs:
           else
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "✅ **Issue reproduced**: $failed/50 runs failed with v0.15.1" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: 📊 Analyze failures for asyncio blockage symptoms
+        if: ${{ failure() }}
+        run: |
+          echo "## 🔍 Failure Analysis" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Count specific error types
+          timeout_errors=0
+          connection_errors=0
+          other_errors=0
+
+          for log in results/run_*.log; do
+            if [ -f "$log" ]; then
+              if grep -q "HomeAssistantTimeoutError" "$log"; then
+                timeout_errors=$((timeout_errors + 1))
+              elif grep -q "ConnectionError\|ReadTimeout" "$log"; then
+                connection_errors=$((connection_errors + 1))
+              elif grep -q "FAILED\|ERROR" "$log"; then
+                other_errors=$((other_errors + 1))
+              fi
+            fi
+          done
+
+          echo "### Error Types Detected:" >> $GITHUB_STEP_SUMMARY
+          echo "- HomeAssistantTimeoutError: $timeout_errors runs" >> $GITHUB_STEP_SUMMARY
+          echo "- Connection/Read Timeout: $connection_errors runs" >> $GITHUB_STEP_SUMMARY
+          echo "- Other errors: $other_errors runs" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ $timeout_errors -gt 0 ]; then
+            echo "✅ **Confirmed**: Failures show HomeAssistantTimeoutError pattern consistent with asyncio event loop blockage" >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: 📤 Upload logs
