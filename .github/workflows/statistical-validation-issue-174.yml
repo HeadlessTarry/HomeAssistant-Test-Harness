@@ -33,7 +33,7 @@ jobs:
       - name: 📦 Install dependencies
         run: uv sync --all-extras
 
-      - name: "🧪 Run tests (iteration ${{ matrix.run_id }})"
+      - name: "🧪 Run tests (iteration ${{ matrix.run_id }}) - v0.15.3 post-fix"
         id: validate
         run: |
           mkdir -p results
@@ -101,15 +101,15 @@ jobs:
             fi
           done
 
-          echo "## 🔬 Validation Results (v0.15.1 baseline)" >> $GITHUB_STEP_SUMMARY
+          echo "## 🔬 Validation Results (v0.15.3 post-fix)" >> $GITHUB_STEP_SUMMARY
           echo "- Passed: $passed/50" >> $GITHUB_STEP_SUMMARY
           echo "- Failed: $failed/50" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           if [ $failed -eq 0 ]; then
-            echo "❌ **Issue not reproduced**: All 50 runs passed - reproduction may be insufficient" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **Fix effective**: All 50 runs passed with v0.15.3" >> $GITHUB_STEP_SUMMARY
           else
-            echo "✅ **Issue reproduced**: $failed/50 runs failed with v0.15.1" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **Fix insufficient**: $failed/50 runs still failed with v0.15.3" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
 
             echo "## 🔍 Failure Analysis" >> $GITHUB_STEP_SUMMARY
@@ -120,7 +120,7 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
 
             if [ $timeout_errors -gt 0 ]; then
-              echo "✅ **Confirmed**: Failures show HomeAssistantTimeoutError pattern consistent with asyncio event loop blockage" >> $GITHUB_STEP_SUMMARY
+              echo "⚠️ **Note**: Failures still show HomeAssistantTimeoutError pattern despite v0.15.3 fix" >> $GITHUB_STEP_SUMMARY
             fi
           fi
 
