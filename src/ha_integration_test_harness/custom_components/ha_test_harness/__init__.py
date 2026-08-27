@@ -13,15 +13,21 @@ WebSocket commands exposed:
   ha_test_harness/entity/delete     - Remove an entity from HA entirely.
   ha_test_harness/template/freeze   - Freeze a template entity to prevent re-evaluation.
   ha_test_harness/template/unfreeze - Unfreeze a template entity to restore re-evaluation.
+  ha_test_harness/time/set          - Set absolute fake time.
+  ha_test_harness/time/advance      - Advance fake time by delta.
+  ha_test_harness/time/get          - Get current fake time.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import time
 import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
+import homeassistant.util.dt as dt_util
 import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.components.template.template_entity import TemplateEntity
@@ -66,18 +72,24 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         "add_callbacks": {},  # domain -> async_add_entities callback
         "platform_ready": platform_ready_events,
         "frozen_entities": set(),  # entity_ids of frozen template entities
+        "time_offset": timedelta(),  # offset from real time for fake time
+        "time_patchers": None,  # will hold the context manager for time patching
     }
 
     for domain in SUPPORTED_DOMAINS:
         hass.async_create_task(discovery.async_load_platform(hass, domain, DOMAIN, {"domain": domain}, config))
 
     _apply_template_monkey_patch(hass)
+    _apply_time_tracker_patch(hass)
 
     websocket_api.async_register_command(hass, ws_create_entity)
     websocket_api.async_register_command(hass, ws_set_entity_state)
     websocket_api.async_register_command(hass, ws_delete_entity)
     websocket_api.async_register_command(hass, ws_freeze_template_entity)
     websocket_api.async_register_command(hass, ws_unfreeze_template_entity)
+    websocket_api.async_register_command(hass, ws_set_time)
+    websocket_api.async_register_command(hass, ws_advance_time)
+    websocket_api.async_register_command(hass, ws_get_time)
 
     hass.services.async_register(
         "ai_task",
@@ -332,3 +344,156 @@ async def ws_unfreeze_template_entity(hass: HomeAssistant, connection: websocket
     entity_id: str = msg["entity_id"]
     hass.data[DOMAIN]["frozen_entities"].discard(entity_id)
     connection.send_result(msg["id"], {"entity_id": entity_id})
+
+
+def _apply_time_tracker_patch(hass: HomeAssistant) -> None:
+    """Monkey-patch HA's time functions to support fake time.
+
+    Patches:
+    - homeassistant.helpers.event.time_tracker_utcnow
+    - homeassistant.helpers.event.time_tracker_timestamp
+    - homeassistant.util.dt.utcnow
+    - homeassistant.util.dt.now
+    to return time adjusted by the offset stored in hass.data[DOMAIN]["time_offset"].
+    """
+    from homeassistant.helpers import event as event_helper
+
+    def _fake_utcnow() -> datetime:
+        """Return fake UTC time (real time + offset)."""
+        result: datetime = datetime.now(timezone.utc) + hass.data[DOMAIN]["time_offset"]
+        return result
+
+    def _fake_timestamp() -> float:
+        """Return fake timestamp (real time + offset)."""
+        result: float = time.time() + hass.data[DOMAIN]["time_offset"].total_seconds()
+        return result
+
+    def _fake_dt_utcnow() -> datetime:
+        """Return fake UTC time for dt_util (real time + offset)."""
+        result: datetime = datetime.now(timezone.utc) + hass.data[DOMAIN]["time_offset"]
+        return result
+
+    def _fake_dt_now(tz: Any = None) -> datetime:
+        """Return fake local time for dt_util (real time + offset)."""
+        import homeassistant.util.dt as dt_util_module
+
+        if tz is None:
+            tz = dt_util_module.DEFAULT_TIME_ZONE
+        result: datetime = (datetime.now(timezone.utc) + hass.data[DOMAIN]["time_offset"]).astimezone(tz)
+        return result
+
+    event_helper.time_tracker_utcnow = _fake_utcnow
+    event_helper.time_tracker_timestamp = _fake_timestamp
+    dt_util.utcnow = _fake_dt_utcnow
+    dt_util.now = _fake_dt_now  # type: ignore[assignment]
+    _LOGGER.info("[ha_test_harness] Monkey-patched time tracker and dt_util functions for fake time support")
+
+
+def _fire_time_changed(hass: HomeAssistant, utc_datetime: datetime) -> None:
+    """Fire scheduled timers that are now due after time advance.
+
+    Mirrors HA's async_fire_time_changed logic from tests/common.py.
+    Iterates scheduled timers and fires those that are now in the past.
+    """
+    timestamp = utc_datetime.timestamp()
+    loop = hass.loop
+
+    for task in list(loop._scheduled):
+        if not isinstance(task, asyncio.TimerHandle):
+            continue
+        if task.cancelled():
+            continue
+
+        mock_seconds_into_future = timestamp - time.time()
+        future_seconds = task.when() - (loop.time() + 0.0001)
+
+        if mock_seconds_into_future >= future_seconds:
+            task._run()
+            task.cancel()
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "ha_test_harness/time/set",
+        vol.Required("time"): str,
+    }
+)
+@websocket_api.async_response
+async def ws_set_time(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    """Handle ha_test_harness/time/set WebSocket command.
+
+    Sets the fake time to an absolute value. Calculates the offset from real time
+    and fires scheduled timers that are now due.
+    """
+    time_str: str = msg["time"]
+
+    try:
+        target_time = datetime.fromisoformat(time_str.replace("Z", "+00:00"))
+        if target_time.tzinfo is None:
+            target_time = target_time.replace(tzinfo=timezone.utc)
+        else:
+            target_time = target_time.astimezone(timezone.utc)
+    except ValueError as err:
+        connection.send_error(msg["id"], "invalid_time", f"Invalid time format: {time_str!r}: {err}")
+        return
+
+    now = datetime.now(timezone.utc)
+    offset = target_time - now
+    hass.data[DOMAIN]["time_offset"] = offset
+
+    _LOGGER.info("[ha_test_harness] Time set to %s (offset: %s)", target_time.isoformat(), offset)
+
+    _fire_time_changed(hass, target_time)
+    await hass.async_block_till_done()
+
+    connection.send_result(msg["id"], {"time": target_time.isoformat(), "offset_seconds": offset.total_seconds()})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "ha_test_harness/time/advance",
+        vol.Required("seconds"): vol.Coerce(float),
+    }
+)
+@websocket_api.async_response
+async def ws_advance_time(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    """Handle ha_test_harness/time/advance WebSocket command.
+
+    Advances the fake time by the specified number of seconds (can be fractional).
+    Updates the offset and fires scheduled timers that are now due.
+    """
+    seconds: float = msg["seconds"]
+    delta = timedelta(seconds=seconds)
+
+    hass.data[DOMAIN]["time_offset"] += delta
+    new_time = datetime.now(timezone.utc) + hass.data[DOMAIN]["time_offset"]
+
+    _LOGGER.info("[ha_test_harness] Time advanced by %s seconds to %s", seconds, new_time.isoformat())
+
+    _fire_time_changed(hass, new_time)
+    await hass.async_block_till_done()
+
+    connection.send_result(msg["id"], {"time": new_time.isoformat(), "offset_seconds": hass.data[DOMAIN]["time_offset"].total_seconds()})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "ha_test_harness/time/get",
+    }
+)
+@websocket_api.async_response
+async def ws_get_time(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    """Handle ha_test_harness/time/get WebSocket command.
+
+    Returns the current fake time and offset from real time.
+    """
+    fake_time = datetime.now(timezone.utc) + hass.data[DOMAIN]["time_offset"]
+    offset = hass.data[DOMAIN]["time_offset"]
+
+    connection.send_result(
+        msg["id"],
+        {
+            "time": fake_time.isoformat(),
+            "offset_seconds": offset.total_seconds(),
+        },
+    )

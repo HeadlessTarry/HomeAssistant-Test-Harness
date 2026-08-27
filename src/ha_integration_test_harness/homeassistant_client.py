@@ -693,6 +693,34 @@ class HomeAssistant:
         finally:
             ws.close()
 
+    def send_websocket_command(self, command_type: str, data: dict[str, Any], timeout: int = 10) -> dict[str, Any]:
+        """Send a WebSocket command to Home Assistant and return the result.
+
+        Public wrapper around _ws_send_receive for sending arbitrary WebSocket commands.
+
+        Args:
+            command_type: The WebSocket command type (e.g., 'ha_test_harness/time/set').
+            data: The command data/payload.
+            timeout: Socket timeout in seconds (default 10).
+
+        Returns:
+            The result from the WebSocket response.
+
+        Raises:
+            HomeAssistantTimeoutError: If the WebSocket connection or command times out.
+            HomeAssistantClientError: If the connection, authentication, or command fails.
+        """
+        payload = {
+            "type": command_type,
+            "id": 1,
+            **data,
+        }
+        response = self._ws_send_receive(payload, timeout=timeout)
+        if not response.get("success"):
+            raise HomeAssistantClientError(f"WebSocket command {command_type} failed: {response}")
+        result: dict[str, Any] = response.get("result", {})
+        return result
+
     def _get_entity_config(self, entity_id: str) -> dict[str, Any]:
         """Fetch the current entity registry config (labels and area_id) for an entity.
 

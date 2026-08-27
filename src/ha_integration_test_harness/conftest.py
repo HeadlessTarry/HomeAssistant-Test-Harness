@@ -206,15 +206,26 @@ def time_machine(docker: DockerComposeManager, home_assistant: HomeAssistant) ->
     except Exception as e:
         raise RuntimeError(f"time_machine fixture: failed to fetch Home Assistant config at session startup — is Home Assistant healthy? Underlying error: {e}") from e
 
+    def _apply_time_via_websocket(time_str: str) -> None:
+        """Apply time change via WebSocket command instead of libfaketime."""
+        if time_str.startswith("@"):
+            time_str = time_str[1:]
+        try:
+            target_dt = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
+            target_iso = target_dt.strftime("%Y-%m-%dT%H:%M:%S+00:00")
+            home_assistant.send_websocket_command("ha_test_harness/time/set", {"time": target_iso})
+        except Exception as e:
+            raise RuntimeError(f"Failed to set time via WebSocket: {e}")
+
     def _stabilize_after_time_jump() -> None:
         home_assistant.check_health()
 
     try:
         return TimeMachine(
-            apply_faketime=lambda content: docker.write_container_file("homeassistant", "/shared_data/.faketime", content),
+            apply_faketime=_apply_time_via_websocket,
             on_time_set=_stabilize_after_time_jump,
             get_entity_state=lambda entity_id: home_assistant.get_state(entity_id),
-            timezone=timezone,  # e.g. "Europe/London" — used by jump_to_next for local-time arithmetic
+            timezone=timezone,
         )
     except ValueError as e:
         raise RuntimeError(

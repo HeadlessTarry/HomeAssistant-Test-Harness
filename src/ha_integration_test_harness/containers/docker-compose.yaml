@@ -8,8 +8,6 @@ services:
     volumes:
       - ./homeassistant/generate_long_lived_token.sh:/generate_long_lived_token.sh:ro
       - ./homeassistant/entrypoint.sh:/entrypoint.sh:ro
-      # Mount libfaketime installation script for time manipulation in tests
-      - ./libfaketime:/libfaketime:ro
       # Mount entire Home Assistant configuration directory as /config
       # HA_CONFIG_ROOT is set by DockerComposeManager to the detected Home Assistant root
       - ${HA_CONFIG_ROOT}:/config
@@ -30,8 +28,6 @@ services:
       - "5050"  # Ephemeral port mapping - Docker assigns random host port
     volumes:
       - ./appdaemon/entrypoint.sh:/entrypoint.sh:ro
-      # Mount libfaketime installation script for time manipulation in tests
-      - ./libfaketime:/libfaketime:ro
       # Mount files referenced by entrypoint script
       - ./appdaemon/appdaemon.yaml.template:/conf/appdaemon.yaml.template:ro
       # Mount AppDaemon apps from the configuration directory
