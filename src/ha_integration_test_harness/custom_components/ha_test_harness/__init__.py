@@ -200,11 +200,13 @@ def _apply_time_monkey_patch(hass: HomeAssistant) -> None:
     _LOGGER.info("[ha_test_harness] Monkey-patched HA time functions for time control")
 
 
-def _fire_scheduled_timers(hass: HomeAssistant, utc_datetime: datetime) -> None:
+async def _fire_scheduled_timers(hass: HomeAssistant, utc_datetime: datetime) -> None:
     """Fire scheduled timers that are now due after time advance.
 
     Mirrors HA's async_fire_time_changed logic from tests/common.py.
-    Iterates scheduled timers and fires those that are now in the past.
+    Collects due timers into a snapshot list before firing to avoid mutating
+    the heapq during iteration. Fires in batches with event loop yields between
+    batches to prevent rapid automation cascades.
 
     Uses loop._scheduled which is a CPython implementation detail (heapq of TimerHandle).
     We use a runtime attribute check (hasattr) instead of an HA version check because:
@@ -220,7 +222,8 @@ def _fire_scheduled_timers(hass: HomeAssistant, utc_datetime: datetime) -> None:
 
     timestamp = utc_datetime.timestamp()
 
-    for task in loop._scheduled:
+    due_timers: list[asyncio.TimerHandle] = []
+    for task in list(loop._scheduled):
         if not isinstance(task, asyncio.TimerHandle):
             continue
         if task.cancelled():
@@ -230,8 +233,16 @@ def _fire_scheduled_timers(hass: HomeAssistant, utc_datetime: datetime) -> None:
         future_seconds = task.when() - (loop.time() + 0.0001)
 
         if mock_seconds_into_future >= future_seconds:
+            due_timers.append(task)
+
+    batch_size = 10
+    for i in range(0, len(due_timers), batch_size):
+        end = i + batch_size
+        batch = due_timers[i:end]
+        for task in batch:
             task._run()
             task.cancel()
+        await asyncio.sleep(0)
 
 
 def _create_virtual_entity(domain: str, unique_id: str, entity_id: str, state: str, attributes: dict[str, Any]) -> Any:
@@ -465,7 +476,7 @@ async def ws_time_set(hass: HomeAssistant, connection: websocket_api.ActiveConne
 
     _LOGGER.info("[ha_test_harness] Time set to %s (offset: %s)", target_dt.isoformat(), offset)
 
-    _fire_scheduled_timers(hass, target_dt)
+    await _fire_scheduled_timers(hass, target_dt)
     await hass.async_block_till_done()
 
     connection.send_result(msg["id"], {"timestamp": target_dt.isoformat(), "offset_seconds": offset.total_seconds()})
@@ -495,7 +506,7 @@ async def ws_time_advance(hass: HomeAssistant, connection: websocket_api.ActiveC
 
     _LOGGER.info("[ha_test_harness] Time advanced by %s seconds to %s", seconds, new_time.isoformat())
 
-    _fire_scheduled_timers(hass, new_time)
+    await _fire_scheduled_timers(hass, new_time)
     await hass.async_block_till_done()
 
     connection.send_result(msg["id"], {"timestamp": new_time.isoformat(), "offset_seconds": new_offset.total_seconds()})
