@@ -269,6 +269,9 @@ async def _fire_scheduled_timers(hass: HomeAssistant, utc_datetime: datetime) ->
                 skipped_count += 1
 
     _LOGGER.warning("[ha_test_harness] Timer census: total_due=%d, matched=%d, skipped=%d, types=%s", skipped_count + len(due_timers), len(due_timers), skipped_count, all_callback_types)
+    import sys
+
+    print(f"[DIAGNOSTIC] Timer census: total_due={skipped_count + len(due_timers)}, matched={len(due_timers)}, skipped={skipped_count}, types={all_callback_types}", file=sys.stderr, flush=True)
 
     if not due_timers:
         return
@@ -555,7 +558,6 @@ async def ws_time_advance(hass: HomeAssistant, connection: websocket_api.ActiveC
 
     _LOGGER.info("[ha_test_harness] Time advanced by %s seconds to %s", seconds, new_time.isoformat())
 
-    await _fire_scheduled_timers(hass, new_time)
     await hass.async_block_till_done()
 
     connection.send_result(msg["id"], {"timestamp": new_time.isoformat(), "offset_seconds": new_offset.total_seconds()})
