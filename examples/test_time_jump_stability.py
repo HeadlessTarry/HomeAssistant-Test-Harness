@@ -1,8 +1,8 @@
-"""Minimal reproduction for issue #174: HA unresponsive after time jumps.
+"""Stability tests for time jumps via WebSocket time control.
 
-This test performs multiple rapid time jumps followed by immediate API calls.
-Without defensive stabilization, HA can become unresponsive after libfaketime
-time jumps due to asyncio quirks in the HA event loop.
+These tests verify that Home Assistant remains responsive after time jumps.
+With WebSocket-based time control replacing libfaketime, HA's asyncio event loop
+no longer stalls, so these tests should pass reliably without defensive stabilization.
 
 Run with: pytest examples/test_time_jump_stability.py -v
 """
@@ -13,14 +13,10 @@ from ha_integration_test_harness import HomeAssistant, TimeMachine
 
 
 class TestTimeJumpStability:
-    """Reproduction tests for issue #174."""
+    """Stability tests for time jumps."""
 
     def test_rapid_time_jumps_then_api_call(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
-        """Perform multiple rapid time jumps then immediately call the API.
-
-        Without stabilization, this test has ~36% chance of failure because
-        HA's asyncio event loop can stall after libfaketime time jumps.
-        """
+        """Perform multiple rapid time jumps then immediately call the API."""
         for i in range(5):
             time_machine.fast_forward(timedelta(hours=1))
             state = home_assistant.get_state("sensor.current_datetime")

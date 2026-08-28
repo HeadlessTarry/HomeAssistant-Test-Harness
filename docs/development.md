@@ -196,8 +196,7 @@ HomeAssistant-Test-Harness/
 │   └── containers/                    # Docker configurations
 │       ├── docker-compose.yaml
 │       ├── homeassistant/             # HA setup scripts
-│       ├── appdaemon/                 # AppDaemon setup
-│       └── libfaketime/               # Time manipulation
+│       └── appdaemon/                 # AppDaemon setup
 ├── examples/                          # Example tests
 │   ├── test_basic_usage.py
 │   └── config/                        # Minimal HA config

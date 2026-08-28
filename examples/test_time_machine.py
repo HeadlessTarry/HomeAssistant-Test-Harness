@@ -82,8 +82,11 @@ class TestTimeMachine:
         after_dt = self.parse_datetime(after_state["state"])
         assert after_dt >= before_dt  # Time moved forward
         assert after_dt.weekday() == 0  # Monday is 0
-        # Verify time components preserved (hour, minute, second)
-        assert after_dt.time() == before_dt.time()
+        # Verify time components preserved (within 2 seconds to account for test execution time)
+        before_seconds = before_dt.hour * 3600 + before_dt.minute * 60 + before_dt.second
+        after_seconds = after_dt.hour * 3600 + after_dt.minute * 60 + after_dt.second
+        time_diff = abs(after_seconds - before_seconds)
+        assert time_diff < 2, f"Time components drifted by {time_diff} seconds"
 
     def test_jump_to_next_month(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
         """Test jumping to next occurrence of a specific month."""
@@ -228,8 +231,11 @@ class TestTimeMachine:
         after_dt = self.parse_datetime(after_state["state"])
         assert after_dt.weekday() == 2  # Wednesday is 2
         assert after_dt >= before_dt  # Time moved forward
-        # Time components should match the time after fast_forward
-        assert after_dt.time() == after_ff_dt.time()
+        # Time components should match the time after fast_forward (within 2 seconds)
+        ff_seconds = after_ff_dt.hour * 3600 + after_ff_dt.minute * 60 + after_ff_dt.second
+        after_seconds = after_dt.hour * 3600 + after_dt.minute * 60 + after_dt.second
+        time_diff = abs(after_seconds - ff_seconds)
+        assert time_diff < 2, f"Time components drifted by {time_diff} seconds"
 
     def test_advance_to_sunrise(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
         """Test advancing to next sunrise."""

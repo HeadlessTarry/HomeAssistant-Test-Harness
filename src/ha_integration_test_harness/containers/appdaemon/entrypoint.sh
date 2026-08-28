@@ -3,10 +3,6 @@ set -e
 
 echo "⏳ Initializing AppDaemon..."
 
-# Install and configure libfaketime for time manipulation in tests
-# shellcheck source=/dev/null
-. /libfaketime/install_libfaketime.sh
-
 echo "⏳ Waiting for Home Assistant token..."
 
 # Wait for the token file to be created

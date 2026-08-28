@@ -143,15 +143,15 @@ fixture 'home_assistant' not found
 
 **Symptoms:** Time-based automations don't trigger at expected times.
 
-**Cause:** LibFaketime not installed in container or not configured correctly.
+**Cause:** WebSocket time control not configured correctly or ha_test_harness integration not loaded.
 
 **Solution:**
 
-1. Check container logs for libfaketime installation messages
-2. Verify `/shared_data/.faketime` file exists in container
+1. Check that the `ha_test_harness` custom integration is loaded (check HA logs)
+2. Verify WebSocket commands work: use `home_assistant.ws_time_get()` to check current fake time
 3. Ensure `time_machine` fixture is requested in your test
 4. Check that you explicitly advanced time (e.g., `time_machine.fast_forward(timedelta(days=1))`) before expecting time-based behavior
-5. Remember that time can only move forward - if you need to test an earlier time, structure your tests accordingly
+5. Remember that the public API (fast_forward, jump_to_next) only moves time forward
 
 ### Cannot Move Time Backward
 
