@@ -220,7 +220,7 @@ def _fire_scheduled_timers(hass: HomeAssistant, utc_datetime: datetime) -> None:
 
     timestamp = utc_datetime.timestamp()
 
-    for task in list(loop._scheduled):
+    for task in loop._scheduled:
         if not isinstance(task, asyncio.TimerHandle):
             continue
         if task.cancelled():
