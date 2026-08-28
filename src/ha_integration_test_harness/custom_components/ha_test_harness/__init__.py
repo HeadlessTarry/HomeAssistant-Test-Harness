@@ -474,6 +474,7 @@ async def ws_time_set(hass: HomeAssistant, connection: websocket_api.ActiveConne
 
     await _fire_scheduled_timers(hass, target_dt)
     await hass.async_block_till_done()
+    await asyncio.sleep(0.5)
 
     connection.send_result(msg["id"], {"timestamp": target_dt.isoformat(), "offset_seconds": offset.total_seconds()})
 
@@ -504,6 +505,7 @@ async def ws_time_advance(hass: HomeAssistant, connection: websocket_api.ActiveC
 
     await _fire_scheduled_timers(hass, new_time)
     await hass.async_block_till_done()
+    await asyncio.sleep(0.5)
 
     connection.send_result(msg["id"], {"timestamp": new_time.isoformat(), "offset_seconds": new_offset.total_seconds()})
 
