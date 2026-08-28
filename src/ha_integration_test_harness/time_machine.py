@@ -118,6 +118,9 @@ class TimeMachine:
         """Get current fake time from WebSocket.
 
         Always fetches fresh from WebSocket to ensure accuracy across test boundaries.
+        This adds ~10-50ms latency per call, but ensures we always have the latest time
+        even if another test has modified it. Since TimeMachine is session-scoped and
+        time persists across tests, we cannot rely on cached values.
 
         Returns:
             Current fake time as a datetime object.

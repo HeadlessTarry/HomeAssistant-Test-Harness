@@ -145,6 +145,17 @@ def _apply_template_monkey_patch(hass: HomeAssistant) -> None:
     _LOGGER.info("[ha_test_harness] Monkey-patched TemplateEntity._handle_results for template freeze support")
 
 
+def _get_time_offset(hass: HomeAssistant) -> timedelta:
+    """Get the current time offset from hass.data."""
+    offset: timedelta = hass.data[DOMAIN]["time_offset"]
+    return offset
+
+
+def _set_time_offset(hass: HomeAssistant, offset: timedelta) -> None:
+    """Set the time offset in hass.data."""
+    hass.data[DOMAIN]["time_offset"] = offset
+
+
 def _apply_time_monkey_patch(hass: HomeAssistant) -> None:
     """Monkey-patch HA time functions to apply a configurable offset.
 
@@ -160,14 +171,14 @@ def _apply_time_monkey_patch(hass: HomeAssistant) -> None:
     from homeassistant.helpers import event as event_helpers
 
     def _patched_utcnow() -> datetime:
-        offset: timedelta = hass.data[DOMAIN]["time_offset"]
+        offset: timedelta = _get_time_offset(hass)
         result: datetime = datetime.now(timezone.utc) + offset
         return result
 
     def _patched_now(time_zone: Any = None) -> datetime:
         import homeassistant.util.dt as dt_util_module
 
-        offset: timedelta = hass.data[DOMAIN]["time_offset"]
+        offset: timedelta = _get_time_offset(hass)
         if time_zone is None:
             time_zone = dt_util_module.DEFAULT_TIME_ZONE
         result: datetime = (datetime.now(timezone.utc) + offset).astimezone(time_zone)
@@ -177,7 +188,7 @@ def _apply_time_monkey_patch(hass: HomeAssistant) -> None:
         return _patched_utcnow()
 
     def _patched_time_tracker_timestamp() -> float:
-        offset: timedelta = hass.data[DOMAIN]["time_offset"]
+        offset: timedelta = _get_time_offset(hass)
         result: float = time.time() + offset.total_seconds()
         return result
 
@@ -450,7 +461,7 @@ async def ws_time_set(hass: HomeAssistant, connection: websocket_api.ActiveConne
         return
 
     offset = target_dt - datetime.now(timezone.utc)
-    hass.data[DOMAIN]["time_offset"] = offset
+    _set_time_offset(hass, offset)
 
     _LOGGER.info("[ha_test_harness] Time set to %s (offset: %s)", target_dt.isoformat(), offset)
 
@@ -477,15 +488,17 @@ async def ws_time_advance(hass: HomeAssistant, connection: websocket_api.ActiveC
     seconds: float = msg["seconds"]
     delta = timedelta(seconds=seconds)
 
-    hass.data[DOMAIN]["time_offset"] += delta
-    new_time = datetime.now(timezone.utc) + hass.data[DOMAIN]["time_offset"]
+    current_offset = _get_time_offset(hass)
+    new_offset = current_offset + delta
+    _set_time_offset(hass, new_offset)
+    new_time = datetime.now(timezone.utc) + new_offset
 
     _LOGGER.info("[ha_test_harness] Time advanced by %s seconds to %s", seconds, new_time.isoformat())
 
     _fire_scheduled_timers(hass, new_time)
     await hass.async_block_till_done()
 
-    connection.send_result(msg["id"], {"timestamp": new_time.isoformat(), "offset_seconds": hass.data[DOMAIN]["time_offset"].total_seconds()})
+    connection.send_result(msg["id"], {"timestamp": new_time.isoformat(), "offset_seconds": new_offset.total_seconds()})
 
 
 @websocket_api.websocket_command(
@@ -499,8 +512,8 @@ async def ws_time_get(hass: HomeAssistant, connection: websocket_api.ActiveConne
 
     Returns the current fake time as an ISO 8601 timestamp and the current offset.
     """
-    fake_time = datetime.now(timezone.utc) + hass.data[DOMAIN]["time_offset"]
-    offset = hass.data[DOMAIN]["time_offset"]
+    offset = _get_time_offset(hass)
+    fake_time = datetime.now(timezone.utc) + offset
 
     connection.send_result(
         msg["id"],

@@ -19,6 +19,11 @@ class TestWebSocketTimeControl:
         """Parse ISO 8601 datetime string and strip timezone to get naive UTC datetime."""
         return datetime.fromisoformat(iso_string).replace(tzinfo=None)
 
+    def get_fake_time(self, home_assistant: HomeAssistant) -> datetime:
+        """Get the current fake time from the WebSocket API."""
+        result = home_assistant.ws_time_get()
+        return self.parse_datetime(result["timestamp"])
+
     def test_time_get_returns_current_fake_time(self, home_assistant: HomeAssistant) -> None:
         """Test that time/get returns the current fake time."""
         result = home_assistant.ws_time_get()
@@ -41,26 +46,22 @@ class TestWebSocketTimeControl:
 
     def test_time_advance_moves_time_forward(self, home_assistant: HomeAssistant) -> None:
         """Test that time/advance moves time forward by the specified seconds."""
-        before_result = home_assistant.ws_time_get()
-        before_time = self.parse_datetime(before_result["timestamp"])
+        before_time = self.get_fake_time(home_assistant)
 
         home_assistant.ws_time_advance(3600)
 
-        after_result = home_assistant.ws_time_get()
-        after_time = self.parse_datetime(after_result["timestamp"])
+        after_time = self.get_fake_time(home_assistant)
 
         delta = after_time - before_time
         assert abs(delta.total_seconds() - 3600) < 5
 
     def test_time_advance_accepts_negative(self, home_assistant: HomeAssistant) -> None:
         """Test that time/advance accepts negative values (moves time backward)."""
-        before_result = home_assistant.ws_time_get()
-        before_time = self.parse_datetime(before_result["timestamp"])
+        before_time = self.get_fake_time(home_assistant)
 
         home_assistant.ws_time_advance(-3600)
 
-        after_result = home_assistant.ws_time_get()
-        after_time = self.parse_datetime(after_result["timestamp"])
+        after_time = self.get_fake_time(home_assistant)
 
         delta = after_time - before_time
         assert abs(delta.total_seconds() + 3600) < 5
