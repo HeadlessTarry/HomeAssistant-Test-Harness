@@ -200,13 +200,36 @@ def _apply_time_monkey_patch(hass: HomeAssistant) -> None:
     _LOGGER.info("[ha_test_harness] Monkey-patched HA time functions for time control")
 
 
+_TIME_TRACKER_CALLBACK_CLASSES = frozenset(
+    {
+        "_TrackPointUTCTime",
+        "_TrackUTCTimeChange",
+        "_TrackTimeInterval",
+    }
+)
+
+
+def _is_time_tracker_callback(callback: Any) -> bool:
+    if callback is None:
+        return False
+    if not callable(callback):
+        return False
+    callback_type = type(callback)
+    if callback_type.__name__ in _TIME_TRACKER_CALLBACK_CLASSES:
+        return True
+    qualname = getattr(callback, "__qualname__", "")
+    if any(cls_name in qualname for cls_name in _TIME_TRACKER_CALLBACK_CLASSES):
+        return True
+    return False
+
+
 async def _fire_scheduled_timers(hass: HomeAssistant, utc_datetime: datetime) -> None:
     """Fire scheduled timers that are now due after time advance.
 
-    Mirrors HA's async_fire_time_changed logic from tests/common.py.
-    Collects due timers into a snapshot list before firing to avoid mutating
-    the heapq during iteration. Fires in batches with event loop yields between
-    batches to prevent rapid automation cascades.
+    Only fires time-tracking timers (those created by homeassistant.helpers.event
+    for automations and template sensors). Internal HA timers (update coordinator
+    polls, health checks, weather updates, etc.) are skipped to prevent event storms
+    that cause WebSocket timeouts and rapid automation cascades.
 
     Uses loop._scheduled which is a CPython implementation detail (heapq of TimerHandle).
     We use a runtime attribute check (hasattr) instead of an HA version check because:
@@ -221,29 +244,56 @@ async def _fire_scheduled_timers(hass: HomeAssistant, utc_datetime: datetime) ->
         return
 
     timestamp = utc_datetime.timestamp()
+    mock_seconds_into_future = timestamp - time.time()
 
     due_timers: list[asyncio.TimerHandle] = []
+    skipped_count = 0
     for task in list(loop._scheduled):
         if not isinstance(task, asyncio.TimerHandle):
             continue
         if task.cancelled():
             continue
 
-        mock_seconds_into_future = timestamp - time.time()
         future_seconds = task.when() - (loop.time() + 0.0001)
 
         if mock_seconds_into_future >= future_seconds:
-            due_timers.append(task)
+            callback = task._callback  # type: ignore[attr-defined]
+            if _is_time_tracker_callback(callback):
+                due_timers.append(task)
+            else:
+                skipped_count += 1
 
-    for task in due_timers:
-        if not task.cancelled():
+    if skipped_count > 0:
+        _LOGGER.debug("[ha_test_harness] Skipped %d non-time-tracker timers", skipped_count)
+
+    if not due_timers:
+        return
+
+    due_timers.sort(key=lambda t: t.when())
+
+    _LOGGER.debug("[ha_test_harness] Firing %d due time-tracker timers with real-time spacing", len(due_timers))
+
+    delay_per_timer = min(0.05, 2.0 / len(due_timers)) if due_timers else 0
+
+    for i, next_timer in enumerate(due_timers):
+        callback = next_timer._callback  # type: ignore[attr-defined]
+        callback_name = getattr(callback, "__qualname__", type(callback).__name__) if callback else "<None>"
+        _LOGGER.debug("[ha_test_harness] Firing timer %d/%d: %s", i + 1, len(due_timers), callback_name)
+
+        if not next_timer.cancelled() and callback is not None:
             try:
-                args = task._args or ()
-                task._context.run(task._callback, *args)  # type: ignore[attr-defined]
+                args = next_timer._args
+                if args is None:
+                    args = ()
+                next_timer._context.run(callback, *args)  # type: ignore[attr-defined]
             except Exception:
                 _LOGGER.exception("[ha_test_harness] Error firing timer callback")
-        task.cancel()
-        await asyncio.sleep(0)
+        next_timer.cancel()
+
+        await hass.async_block_till_done()
+
+        if i < len(due_timers) - 1:
+            await asyncio.sleep(delay_per_timer)
 
 
 def _create_virtual_entity(domain: str, unique_id: str, entity_id: str, state: str, attributes: dict[str, Any]) -> Any:
@@ -324,12 +374,7 @@ async def ws_create_entity(hass: HomeAssistant, connection: websocket_api.Active
     entity = _create_virtual_entity(domain, unique_id, entity_id, state, attributes)
 
     hass.data[DOMAIN]["add_callbacks"][domain]([entity])
-    # Yield once to allow the entity's async_write_ha_state() call to propagate through
-    # the HA event loop without waiting for unrelated background tasks.  Using
-    # async_block_till_done() here would drain ALL pending asyncio tasks — including
-    # sleeping automation actions triggered by the new entity's state change — which
-    # causes multi-second (or multi-minute) delays in heavy HA configurations.
-    await asyncio.sleep(0)
+    await hass.async_block_till_done()
 
     actual_entity_id: str = entity.entity_id
     if actual_entity_id != entity_id:
@@ -370,8 +415,7 @@ async def ws_set_entity_state(hass: HomeAssistant, connection: websocket_api.Act
         return
 
     entity.set_virtual_state(state, attributes)
-    # Yield once — same rationale as ws_create_entity: avoid draining unrelated tasks.
-    await asyncio.sleep(0)
+    await hass.async_block_till_done()
     connection.send_result(msg["id"], {"entity_id": entity_id, "state": state})
 
 
