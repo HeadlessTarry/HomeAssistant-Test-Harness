@@ -236,7 +236,12 @@ async def _fire_scheduled_timers(hass: HomeAssistant, utc_datetime: datetime) ->
             due_timers.append(task)
 
     for task in due_timers:
-        task._run()
+        if not task.cancelled():
+            try:
+                args = task._args or ()
+                task._context.run(task._callback, *args)  # type: ignore[attr-defined]
+            except Exception:
+                _LOGGER.exception("[ha_test_harness] Error firing timer callback")
         task.cancel()
         await asyncio.sleep(0)
 
