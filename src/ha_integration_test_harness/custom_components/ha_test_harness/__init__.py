@@ -248,6 +248,7 @@ async def _fire_scheduled_timers(hass: HomeAssistant, utc_datetime: datetime) ->
 
     due_timers: list[asyncio.TimerHandle] = []
     skipped_count = 0
+    all_callback_types: dict[str, int] = {}
     for task in list(loop._scheduled):
         if not isinstance(task, asyncio.TimerHandle):
             continue
@@ -258,13 +259,16 @@ async def _fire_scheduled_timers(hass: HomeAssistant, utc_datetime: datetime) ->
 
         if mock_seconds_into_future >= future_seconds:
             callback = task._callback  # type: ignore[attr-defined]
+            cb_type = type(callback).__name__ if callback else "None"
+            cb_qualname = getattr(callback, "__qualname__", cb_type) if callback else "None"
+            cb_key = f"{cb_type}({cb_qualname})"
+            all_callback_types[cb_key] = all_callback_types.get(cb_key, 0) + 1
             if _is_time_tracker_callback(callback):
                 due_timers.append(task)
             else:
                 skipped_count += 1
 
-    if skipped_count > 0:
-        _LOGGER.debug("[ha_test_harness] Skipped %d non-time-tracker timers", skipped_count)
+    _LOGGER.warning("[ha_test_harness] Timer census: total_due=%d, matched=%d, skipped=%d, types=%s", skipped_count + len(due_timers), len(due_timers), skipped_count, all_callback_types)
 
     if not due_timers:
         return
