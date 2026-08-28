@@ -194,9 +194,20 @@ def _fire_scheduled_timers(hass: HomeAssistant, utc_datetime: datetime) -> None:
 
     Mirrors HA's async_fire_time_changed logic from tests/common.py.
     Iterates scheduled timers and fires those that are now in the past.
+
+    Uses loop._scheduled which is a CPython implementation detail (heapq of TimerHandle).
+    We use a runtime attribute check (hasattr) instead of an HA version check because:
+    1. More robust - works regardless of HA version numbering
+    2. Follows Python duck-typing principles
+    3. If the attribute is removed in a future HA version, this gracefully degrades
+       (no timers fired, but no crash)
     """
-    timestamp = utc_datetime.timestamp()
     loop = hass.loop
+    if not hasattr(loop, "_scheduled"):
+        _LOGGER.warning("[ha_test_harness] Event loop does not have _scheduled attribute; cannot fire timers")
+        return
+
+    timestamp = utc_datetime.timestamp()
 
     for task in list(loop._scheduled):
         if not isinstance(task, asyncio.TimerHandle):

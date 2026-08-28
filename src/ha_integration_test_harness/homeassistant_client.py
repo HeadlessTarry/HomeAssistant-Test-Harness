@@ -985,7 +985,7 @@ class HomeAssistant:
         """Advance the fake time by the specified number of seconds via WebSocket.
 
         Args:
-            seconds: Number of seconds to advance (must be non-negative).
+            seconds: Number of seconds to advance (can be negative to move time backward).
 
         Returns:
             The result dict with "timestamp" and "offset_seconds" keys.

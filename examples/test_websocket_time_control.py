@@ -132,26 +132,6 @@ class TestWebSocketTimeControl:
             timeout=10,
         )
 
-    def test_temp_set_time_allows_backward_time(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
-        """Test that temp_set_time allows setting time to a past value."""
-        far_future = datetime(2030, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
-        home_assistant.ws_time_set(far_future.isoformat())
-
-        past_target = datetime(2025, 6, 15, 12, 0, 0)
-        time_machine.temp_set_time(past_target)
-
-        def _check_past(s: str) -> bool:
-            if s is None:
-                return False
-            dt = self.parse_datetime(s)
-            return dt.year == 2025 and dt.month == 6
-
-        home_assistant.assert_entity_state(
-            "sensor.current_datetime",
-            _check_past,
-            timeout=10,
-        )
-
     def test_rapid_time_jumps_stable(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
         """Test that rapid time jumps don't cause HA instability."""
         for i in range(5):
@@ -164,3 +144,51 @@ class TestWebSocketTimeControl:
         time_machine.fast_forward(timedelta(days=30))
         state = home_assistant.get_state("sensor.current_datetime")
         assert state is not None, "HA unresponsive after large time jump"
+
+    def test_timer_fires_when_time_advanced(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
+        """Test that scheduled timers/automations fire when time is advanced past their trigger time."""
+        # Get current time
+        current_state = home_assistant.get_state("sensor.current_datetime")
+        current_dt = self.parse_datetime(current_state["state"])
+
+        # Advance by 30 seconds
+        time_machine.fast_forward(timedelta(seconds=30))
+
+        # Verify the sensor updated (the sensor.current_datetime updates every second via time_pattern trigger)
+        after_state = home_assistant.get_state("sensor.current_datetime")
+        after_dt = self.parse_datetime(after_state["state"])
+
+        # Verify time actually advanced
+        assert after_dt > current_dt, "Time should have advanced"
+        # Verify it advanced by approximately the expected amount (30 seconds)
+        delta = (after_dt - current_dt).total_seconds()
+        assert 28 <= delta <= 32, f"Time should have advanced by ~30 seconds, but advanced by {delta}"
+
+    def test_timezone_aware_time_setting(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
+        """Test that time can be set with timezone-aware datetimes."""
+        # Set time using a timezone-aware datetime (UTC)
+        target_utc = datetime(2027, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
+        home_assistant.ws_time_set(target_utc.isoformat())
+
+        # Verify the time was set correctly
+        state = home_assistant.get_state("sensor.current_datetime")
+        sensor_time = self.parse_datetime(state["state"])
+        assert sensor_time.year == 2027
+        assert sensor_time.month == 6
+        assert sensor_time.day == 15
+        assert sensor_time.hour == 12
+
+    def test_large_time_jump_across_months(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
+        """Test that large time jumps across month boundaries work correctly."""
+        # Set time to end of January
+        target = datetime(2027, 1, 31, 23, 0, 0, tzinfo=timezone.utc)
+        home_assistant.ws_time_set(target.isoformat())
+
+        # Jump forward 2 days (should cross into March)
+        time_machine.fast_forward(timedelta(days=2))
+
+        # Verify we're in March
+        state = home_assistant.get_state("sensor.current_datetime")
+        sensor_time = self.parse_datetime(state["state"])
+        assert sensor_time.month == 2  # February (2027 is not a leap year)
+        assert sensor_time.day == 2

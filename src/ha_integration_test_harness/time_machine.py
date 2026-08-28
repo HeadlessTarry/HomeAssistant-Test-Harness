@@ -66,8 +66,7 @@ class TimeMachine:
 
     **IMPORTANT LIMITATION**: The public API (fast_forward, jump_to_next) only moves
     time forward, never backward. This is a design constraint to prevent test
-    interdependence. A temporary temp_set_time() method is available for backward
-    time testing during development, but will be removed before merge.
+    interdependence.
 
     The TimeMachine is session-scoped, meaning time persists across all tests in a
     test session. Tests that depend on specific time conditions must explicitly
@@ -131,14 +130,6 @@ class TimeMachine:
                 self._fake_time = datetime.now(_stdlib_timezone.utc).replace(tzinfo=None, microsecond=0)
             logger.debug(f"Using cached/fallback fake time: {self._fake_time} (WebSocket error: {e})")
         return self._fake_time
-
-    def _get_real_time(self) -> datetime:
-        """Get current real time (without offset).
-
-        Returns:
-            Current real time as a datetime object.
-        """
-        return datetime.now(_stdlib_timezone.utc).replace(tzinfo=None, microsecond=0)
 
     def _local_time_to_utc(self, reference_utc: datetime, hour: Optional[int], minute: Optional[int], second: Optional[int], current_time: datetime) -> datetime:
         """Apply hour/minute/second constraints in the configured local timezone, returning naive UTC.
@@ -565,24 +556,4 @@ class TimeMachine:
             target_dt,
             log_message=f"Advanced to {preset_lower} with offset {offset_applied} -> {time_str}",
             error_message_prefix=f"Failed to advance to {preset_lower} at {time_str}",
-        )
-
-    def temp_set_time(self, target_dt: datetime) -> None:
-        """Set time to an absolute value (TEMPORARY — for backward time testing only).
-
-        This method is a temporary escape hatch for testing backward time travel.
-        It will be removed before merge. Use fast_forward() or jump_to_next() for
-        forward-only time manipulation in production tests.
-
-        Args:
-            target_dt: Target datetime to set (naive UTC).
-
-        Raises:
-            TimeMachineError: If time manipulation fails.
-        """
-        time_str = target_dt.strftime("%Y-%m-%d %H:%M:%S")
-        self._set_time(
-            target_dt,
-            log_message=f"Set time to {time_str} (temp_set_time)",
-            error_message_prefix=f"Failed to set time to {time_str}",
         )

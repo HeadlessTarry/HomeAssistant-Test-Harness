@@ -231,7 +231,10 @@ def time_machine(docker: DockerComposeManager, home_assistant: HomeAssistant) ->
         )
     except ValueError as e:
         raise RuntimeError(
-            f"time_machine fixture: Home Assistant returned an unrecognised timezone '{timezone_str}'. Check the 'time_zone' field in your HA configuration.yaml. Underlying error: {e}"
+            f"time_machine fixture: Home Assistant returned an unrecognised timezone '{timezone_str}'. "
+            f"Check the 'time_zone' field in your HA configuration.yaml. "
+            f"See: https://github.com/HeadlessTarry/HomeAssistant-Test-Harness/blob/main/docs/usage.md "
+            f"Underlying error: {e}"
         ) from e
 
     # No teardown: time cannot be reset and persists across tests in the session
