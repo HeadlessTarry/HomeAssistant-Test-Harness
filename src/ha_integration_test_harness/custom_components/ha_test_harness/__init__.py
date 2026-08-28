@@ -235,13 +235,9 @@ async def _fire_scheduled_timers(hass: HomeAssistant, utc_datetime: datetime) ->
         if mock_seconds_into_future >= future_seconds:
             due_timers.append(task)
 
-    batch_size = 10
-    for i in range(0, len(due_timers), batch_size):
-        end = i + batch_size
-        batch = due_timers[i:end]
-        for task in batch:
-            task._run()
-            task.cancel()
+    for task in due_timers:
+        task._run()
+        task.cancel()
         await asyncio.sleep(0)
 
 
