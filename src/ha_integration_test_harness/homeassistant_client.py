@@ -4,7 +4,7 @@ import json
 import logging
 import time
 from datetime import datetime
-from typing import Any, Callable, Optional, Union, overload
+from typing import Any, Callable, NoReturn, Optional, Union, overload
 from urllib.parse import urlparse, urlunparse
 
 import requests
@@ -18,9 +18,6 @@ _HEALTH_CHECK_TIMEOUT = 3
 _HEALTH_CHECK_POLL_TIMEOUT = 10
 _HEALTH_CHECK_INITIAL_INTERVAL = 0.1
 _HEALTH_CHECK_MAX_INTERVAL = 1.0
-
-_API_RETRY_MAX_RETRIES = 3
-_API_RETRY_INITIAL_INTERVAL = 0.5
 
 # Sentinel object used to distinguish "not provided" from ``None`` in optional parameters.
 # Typed as ``Any`` so mypy accepts it as a default for parameters typed ``Optional[str]``
@@ -55,51 +52,6 @@ class HomeAssistant:
         self._is_unresponsive: bool = False
         self._test_start_time: Optional[datetime] = None
 
-    def _retry_on_transient_failure(self, func: Callable[[], Any], operation_description: str) -> Any:
-        """Retry an operation on transient network failures with exponential backoff.
-
-        Retries on ``requests.Timeout`` and ``requests.ConnectionError`` only.
-        Other exceptions are raised immediately.
-
-        Args:
-            func: The callable to retry.
-            operation_description: Description for error messages.
-
-        Returns:
-            The return value of the callable.
-
-        Raises:
-            HomeAssistantTimeoutError: If all retries are exhausted on timeout.
-            HomeAssistantClientError: If all retries are exhausted on connection error,
-                or if a non-transient exception occurs.
-        """
-        interval = _API_RETRY_INITIAL_INTERVAL
-        last_exception: Optional[Exception] = None
-
-        for attempt in range(_API_RETRY_MAX_RETRIES + 1):
-            try:
-                return func()
-            except requests.Timeout as e:
-                last_exception = e
-                if attempt < _API_RETRY_MAX_RETRIES:
-                    logger.debug(f"{operation_description}: timeout on attempt {attempt + 1}, retrying in {interval}s")
-                    time.sleep(interval)
-                    interval *= 2
-                else:
-                    raise HomeAssistantTimeoutError(f"{operation_description}: timed out after {_API_RETRY_MAX_RETRIES + 1} attempts: {e}")
-            except requests.ConnectionError as e:
-                last_exception = e
-                if attempt < _API_RETRY_MAX_RETRIES:
-                    logger.debug(f"{operation_description}: connection error on attempt {attempt + 1}, retrying in {interval}s")
-                    time.sleep(interval)
-                    interval *= 2
-                else:
-                    raise HomeAssistantClientError(f"{operation_description}: connection failed after {_API_RETRY_MAX_RETRIES + 1} attempts: {e}")
-            except requests.RequestException as e:
-                raise HomeAssistantClientError(f"{operation_description}: {e}")
-
-        raise HomeAssistantClientError(f"{operation_description}: failed after {_API_RETRY_MAX_RETRIES + 1} attempts: {last_exception}")
-
     @property
     def is_unresponsive(self) -> bool:
         """Whether Home Assistant has been confirmed unresponsive.
@@ -108,6 +60,23 @@ class HomeAssistant:
         Once set, the pytest plugin skips remaining tests and suppresses futile cleanup.
         """
         return self._is_unresponsive
+
+    def _handle_http_error(self, e: Exception, method: str, url: str) -> NoReturn:
+        """Convert a requests exception to the appropriate harness exception. Always raises."""
+        if isinstance(e, requests.Timeout):
+            raise HomeAssistantTimeoutError(f"{method} {url}: timed out: {e}")
+        if isinstance(e, requests.ConnectionError):
+            raise HomeAssistantClientError(f"{method} {url}: connection failed: {e}")
+        raise HomeAssistantClientError(f"{method} {url}: {e}")
+
+    def _ws_extract_result(self, response: dict[str, Any], command: str) -> dict[str, Any]:
+        """Validate a WebSocket response and extract the result dict."""
+        if not response.get("success"):
+            raise HomeAssistantClientError(f"Failed to {command} via WebSocket: {response}")
+        result = response.get("result")
+        if not isinstance(result, dict):
+            raise HomeAssistantClientError(f"Failed to {command} via WebSocket: unexpected result: {response}")
+        return result
 
     def set_state(self, entity_id: str, state: str, attributes: Optional[dict[str, Any]] = None) -> None:
         """Set the state and/or attributes of a Home Assistant entity.
@@ -169,12 +138,11 @@ class HomeAssistant:
         if attributes is not None:
             body["attributes"] = attributes
 
-        def do_post() -> requests.Response:
+        try:
             response_http = requests.post(url, json=body, headers=headers, timeout=self._timeout)
             response_http.raise_for_status()
-            return response_http
-
-        self._retry_on_transient_failure(do_post, f"POST {url}")
+        except requests.RequestException as e:
+            self._handle_http_error(e, "POST", url)
 
         if _freeze:
             self._freeze_template_entity(entity_id)
@@ -195,16 +163,15 @@ class HomeAssistant:
         url = f"{self._base_url}/api/states/{entity_id}"
         headers = {"Authorization": f"Bearer {self._access_token}"}
 
-        def do_get() -> Optional[dict[str, Any]]:
+        try:
             response = requests.get(url, headers=headers, timeout=self._timeout)
             if response.status_code == 404:
                 return None
             response.raise_for_status()
             result: dict[str, Any] = response.json()
             return result
-
-        result = self._retry_on_transient_failure(do_get, f"GET {url}")
-        return result if result is None else dict(result)
+        except requests.RequestException as e:
+            self._handle_http_error(e, "GET", url)
 
     def get_config(self) -> dict[str, Any]:
         """Fetch the Home Assistant configuration.
@@ -221,14 +188,13 @@ class HomeAssistant:
         url = f"{self._base_url}/api/config"
         headers = {"Authorization": f"Bearer {self._access_token}"}
 
-        def do_get() -> dict[str, Any]:
+        try:
             response = requests.get(url, headers=headers, timeout=self._timeout)
             response.raise_for_status()
             result: dict[str, Any] = response.json()
             return result
-
-        result = self._retry_on_transient_failure(do_get, f"GET {url}")
-        return dict(result)
+        except requests.RequestException as e:
+            self._handle_http_error(e, "GET", url)
 
     @overload
     def assert_entity_state(self, entity_id: str, expected_state: str, expected_attributes: Optional[dict[str, Any]] = None, timeout: int = 5) -> None: ...
@@ -478,12 +444,13 @@ class HomeAssistant:
         url = f"{self._base_url}/api/states/{entity_id}"
         headers = {"Authorization": f"Bearer {self._access_token}"}
 
-        def do_delete() -> None:
+        try:
             response_http = requests.delete(url, headers=headers, timeout=self._timeout)
             if response_http.status_code != 404:
                 response_http.raise_for_status()
+        except requests.RequestException as e:
+            self._handle_http_error(e, "DELETE", url)
 
-        self._retry_on_transient_failure(do_delete, f"DELETE {url}")
         self._forget_entity(entity_id)
 
     def _forget_entity(self, entity_id: str) -> None:
@@ -513,11 +480,11 @@ class HomeAssistant:
         url = f"{self._base_url}/api/services/{domain}/{action}"
         headers = {"Authorization": f"Bearer {self._access_token}"}
 
-        def do_post() -> None:
+        try:
             response = requests.post(url, json=data or {}, headers=headers, timeout=self._timeout)
             response.raise_for_status()
-
-        self._retry_on_transient_failure(do_post, f"POST {url}")
+        except requests.RequestException as e:
+            self._handle_http_error(e, "POST", url)
 
     def call_action_with_response(self, domain: str, action: str, data: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         """Call a Home Assistant action (service) and return its response.
@@ -537,7 +504,7 @@ class HomeAssistant:
         url = f"{self._base_url}/api/services/{domain}/{action}?return_response"
         headers = {"Authorization": f"Bearer {self._access_token}"}
 
-        def do_post() -> dict[str, Any]:
+        try:
             response = requests.post(url, json=data or {}, headers=headers, timeout=self._timeout)
             if response.status_code >= 400:
                 raise HomeAssistantClientError(f"Failed to call action {domain}.{action} at {url}: {response.status_code} {response.reason}\n" + f"Response body: {response.text}")
@@ -545,9 +512,11 @@ class HomeAssistant:
             service_response = response_json.get("service_response", response_json)
             assert isinstance(service_response, dict)
             return dict(service_response)
-
-        result = self._retry_on_transient_failure(do_post, f"POST {url}")
-        return dict(result)
+        except requests.RequestException as e:
+            if isinstance(e, HomeAssistantClientError):
+                raise
+            self._handle_http_error(e, "POST", url)
+        raise HomeAssistantClientError(f"POST {url}: unexpected fallthrough")  # pragma: no cover
 
     def check_health(self) -> bool:
         """Check whether Home Assistant is responsive.
@@ -995,3 +964,48 @@ class HomeAssistant:
         # Raise if there were any errors
         if errors:
             raise HomeAssistantClientError(f"Failed to clean up {len(errors)} test entities:\n" + "\n".join(errors))
+
+    def ws_time_set(self, timestamp: str) -> dict[str, Any]:
+        """Set the fake time to an absolute ISO 8601 timestamp via WebSocket.
+
+        Args:
+            timestamp: ISO 8601 formatted datetime string (e.g., "2026-02-02T15:30:00+00:00").
+
+        Returns:
+            The result dict with "timestamp" and "offset_seconds" keys.
+
+        Raises:
+            HomeAssistantClientError: If the WebSocket command fails.
+        """
+        payload: dict[str, Any] = {"id": 1, "type": "ha_test_harness/time/set", "timestamp": timestamp}
+        response = self._ws_send_receive(payload)
+        return self._ws_extract_result(response, "set time")
+
+    def ws_time_advance(self, seconds: float) -> dict[str, Any]:
+        """Advance the fake time by the specified number of seconds via WebSocket.
+
+        Args:
+            seconds: Number of seconds to advance (can be negative to move time backward).
+
+        Returns:
+            The result dict with "timestamp" and "offset_seconds" keys.
+
+        Raises:
+            HomeAssistantClientError: If the WebSocket command fails.
+        """
+        payload: dict[str, Any] = {"id": 1, "type": "ha_test_harness/time/advance", "seconds": seconds}
+        response = self._ws_send_receive(payload)
+        return self._ws_extract_result(response, "advance time")
+
+    def ws_time_get(self) -> dict[str, Any]:
+        """Get the current fake time via WebSocket.
+
+        Returns:
+            The result dict with "timestamp" and "offset_seconds" keys.
+
+        Raises:
+            HomeAssistantClientError: If the WebSocket command fails.
+        """
+        payload: dict[str, Any] = {"id": 1, "type": "ha_test_harness/time/get"}
+        response = self._ws_send_receive(payload)
+        return self._ws_extract_result(response, "get time")

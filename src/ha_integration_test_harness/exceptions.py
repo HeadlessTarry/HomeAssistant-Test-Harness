@@ -72,10 +72,9 @@ class TimeMachineError(IntegrationTestError):
     """Exception raised when time manipulation operations fail.
 
     This includes failures in:
-    - Setting time via libfaketime
+    - Setting time via WebSocket commands
     - Advancing time
-    - Resetting time to real time
-    - Writing faketime configuration files
+    - Getting current fake time
     """
 
     pass

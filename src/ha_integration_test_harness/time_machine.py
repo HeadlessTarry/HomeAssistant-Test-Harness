@@ -59,14 +59,14 @@ DAY_NAMES = {
 
 
 class TimeMachine:
-    """Manages time manipulation for integration tests using libfaketime.
+    """Manages time manipulation for integration tests using WebSocket time control.
 
     This class enables deterministic testing of time-based automations by allowing
     tests to advance time forward in the containerized Home Assistant environment.
 
-    **IMPORTANT LIMITATION**: Time can only move forward, never backward. Once time
-    has been advanced, it cannot be reset to an earlier point. This is a fundamental
-    constraint of the libfaketime implementation used by the containers.
+    **IMPORTANT LIMITATION**: The public API (fast_forward, jump_to_next) only moves
+    time forward, never backward. This is a design constraint to prevent test
+    interdependence.
 
     The TimeMachine is session-scoped, meaning time persists across all tests in a
     test session. Tests that depend on specific time conditions must explicitly
@@ -75,7 +75,9 @@ class TimeMachine:
 
     def __init__(
         self,
-        apply_faketime: Callable[[str], None],
+        apply_time_change: Callable[[datetime], None],
+        advance_time: Callable[[timedelta], None],
+        get_current_time_ws: Callable[[], datetime],
         on_time_set: Optional[Callable[[], None]] = None,
         get_entity_state: Optional[Callable[[str], Optional[dict[str, Any]]]] = None,
         timezone: Optional[str] = None,
@@ -83,8 +85,10 @@ class TimeMachine:
         """Initialize the time machine.
 
         Args:
-            apply_faketime: Callback to apply faketime configuration (receives time string).
-            on_time_set: Optional callback to invoke after setting time (e.g., token regeneration).
+            apply_time_change: Callback to set absolute time via WebSocket (receives target datetime).
+            advance_time: Callback to advance time by a relative offset via WebSocket (receives timedelta).
+            get_current_time_ws: Callback to get current fake time via WebSocket.
+            on_time_set: Optional callback to invoke after setting time (e.g., for post-time-change hooks).
             get_entity_state: Optional callback to get entity state (e.g., for sunrise/sunset times).
             timezone: IANA timezone name (e.g. "Europe/London") used by ``jump_to_next`` to
                 interpret ``hour``/``minute``/``second`` arguments as local wall-clock time.
@@ -95,7 +99,9 @@ class TimeMachine:
         Raises:
             ValueError: If ``timezone`` is provided but is not a valid IANA timezone name.
         """
-        self._apply_faketime = apply_faketime
+        self._apply_time_change = apply_time_change
+        self._advance_time = advance_time
+        self._get_current_time_ws = get_current_time_ws
         self._on_time_set = on_time_set
         self._get_entity_state = get_entity_state
         self._fake_time: Optional[datetime] = None
@@ -109,18 +115,23 @@ class TimeMachine:
             self._tz = None
 
     def _get_current_time(self) -> datetime:
-        """Get current fake time, initializing lazily if needed.
+        """Get current fake time from WebSocket.
+
+        Always fetches fresh from WebSocket to ensure accuracy across test boundaries.
+        This adds ~10-50ms latency per call, but ensures we always have the latest time
+        even if another test has modified it. Since TimeMachine is session-scoped and
+        time persists across tests, we cannot rely on cached values.
 
         Returns:
             Current fake time as a datetime object.
         """
-        if self._fake_time is None:
-            # Lazy initialization: use current UTC time on first operation.
-            # This only works if the container's initial fake time is set to "+0"
-            # (i.e., start with real current time). UTC is used explicitly to avoid
-            # a 1-hour offset when the host machine is observing DST.
-            self._fake_time = datetime.now(_stdlib_timezone.utc).replace(tzinfo=None, microsecond=0)
-            logger.debug(f"Initialized fake time from host UTC clock (fallback): {self._fake_time}")
+        try:
+            self._fake_time = self._get_current_time_ws().replace(tzinfo=None, microsecond=0)
+            logger.debug(f"Fetched fake time from WebSocket: {self._fake_time}")
+        except Exception as e:
+            if self._fake_time is None:
+                self._fake_time = datetime.now(_stdlib_timezone.utc).replace(tzinfo=None, microsecond=0)
+            logger.debug(f"Using cached/fallback fake time: {self._fake_time} (WebSocket error: {e})")
         return self._fake_time
 
     def _local_time_to_utc(self, reference_utc: datetime, hour: Optional[int], minute: Optional[int], second: Optional[int], current_time: datetime) -> datetime:
@@ -187,10 +198,10 @@ class TimeMachine:
         return utc0 if utc0 > current_time else utc1
 
     def _set_time(self, target_dt: datetime, log_message: str, error_message_prefix: str) -> None:
-        """Apply time change to faketime and update internal state.
+        """Apply time change via WebSocket and update internal state.
 
-        This helper method encapsulates the common pattern of formatting the datetime,
-        applying faketime, updating internal state, logging, and invoking callbacks.
+        This helper method encapsulates the common pattern of applying time changes,
+        updating internal state, logging, and invoking callbacks.
 
         Args:
             target_dt: Target datetime to set.
@@ -200,18 +211,13 @@ class TimeMachine:
         Raises:
             TimeMachineError: If time manipulation fails.
         """
-        # Normalize to whole-second precision to avoid drift between internal clock and container clock
         target_dt = target_dt.replace(microsecond=0)
 
-        # Format datetime for libfaketime: "@YYYY-MM-DD HH:MM:SS"
-        time_str = target_dt.strftime("@%Y-%m-%d %H:%M:%S")
-
         try:
-            self._apply_faketime(time_str)
+            self._apply_time_change(target_dt)
             self._fake_time = target_dt
             logger.debug(log_message)
 
-            # Invoke callback if provided (e.g., to regenerate access tokens)
             if self._on_time_set is not None:
                 self._on_time_set()
         except Exception as e:
@@ -244,23 +250,18 @@ class TimeMachine:
             ValueError: If delta is negative (time can only move forward).
             TimeMachineError: If time manipulation fails.
         """
-        # Validate delta is non-negative
         if delta.total_seconds() < 0:
             raise ValueError(f"Cannot advance time backwards: delta={delta}. Time can only move forward.")
 
-        # Calculate target time from current fake time
         try:
-            target_dt = self._get_current_time() + delta
-        except (ValueError, OverflowError) as e:
-            raise TimeMachineError(f"Failed to calculate target time: {e}")
+            self._advance_time(delta)
+            self._fake_time = self._get_current_time()
+            logger.debug(f"Advanced time by {delta} -> {self._fake_time}")
 
-        # Apply time change
-        time_str = target_dt.strftime("%Y-%m-%d %H:%M:%S")
-        self._set_time(
-            target_dt,
-            log_message=f"Advanced time by {delta} -> {time_str}",
-            error_message_prefix=f"Failed to advance time to {time_str}",
-        )
+            if self._on_time_set is not None:
+                self._on_time_set()
+        except Exception as e:
+            raise TimeMachineError(f"Failed to advance time by {delta}: {e}")
 
     def jump_to_next(
         self,
@@ -531,7 +532,6 @@ class TimeMachine:
             # e.g., "2026-01-21T07:30:00+00:00"
             preset_dt = datetime.fromisoformat(time_str_from_entity)
             # Containers run in UTC, so strip timezone info to get naive UTC datetime
-            # This matches the libfaketime expectation of naive timestamps in container time (UTC)
             preset_dt = preset_dt.replace(tzinfo=None)
         except (ValueError, AttributeError) as e:
             raise TimeMachineError(f"Failed to parse {preset_lower} time '{time_str_from_entity}': {e}")

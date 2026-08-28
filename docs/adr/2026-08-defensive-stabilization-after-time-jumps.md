@@ -1,6 +1,6 @@
 # 🂡 Defensive stabilization after time jumps
 
-> **Status:** Active
+> **Status:** Superseded by [2026-08-websocket-time-control](2026-08-websocket-time-control.md)
 > **Issue:** [#174 — HA container becomes unresponsive after time jumps via libfaketime](https://github.com/HeadlessTarry/HomeAssistant-Test-Harness/issues/174)
 > **Date:** 2026-08
 

@@ -1,7 +1,7 @@
 """Pytest configuration and fixtures for integration tests."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Generator, Optional
 
@@ -184,12 +184,14 @@ def time_machine(docker: DockerComposeManager, home_assistant: HomeAssistant) ->
     """Provide time machine for integration tests.
 
     This fixture creates a time machine that allows tests to advance time forward
-    for deterministic testing of time-based automations.
+    for deterministic testing of time-based automations. Time control is implemented
+    via WebSocket commands to the ha_test_harness custom component, which applies
+    an in-process time offset to HA's time functions.
 
-    **IMPORTANT**: Time can only move forward, never backward. The fixture is
-    session-scoped, meaning time persists across all tests in the session and
-    cannot be reset. Tests that depend on specific time conditions must explicitly
-    advance time to the desired state at the start of the test.
+    **IMPORTANT**: The public API (fast_forward, jump_to_next) only moves time forward.
+    The fixture is session-scoped, meaning time persists across all tests in the session.
+    Tests that depend on specific time conditions must explicitly advance time to the
+    desired state at the start of the test.
 
     Tests must explicitly request this fixture to use time manipulation.
 
@@ -202,23 +204,37 @@ def time_machine(docker: DockerComposeManager, home_assistant: HomeAssistant) ->
     """
     try:
         ha_config = home_assistant.get_config()
-        timezone = ha_config.get("time_zone")
+        timezone_str = ha_config.get("time_zone")
     except Exception as e:
         raise RuntimeError(f"time_machine fixture: failed to fetch Home Assistant config at session startup — is Home Assistant healthy? Underlying error: {e}") from e
 
-    def _stabilize_after_time_jump() -> None:
-        home_assistant.check_health()
+    def _apply_time_change(target_dt: datetime) -> None:
+        if target_dt.tzinfo is None:
+            target_dt = target_dt.replace(tzinfo=timezone.utc)
+        timestamp_str = target_dt.isoformat()
+        home_assistant.ws_time_set(timestamp_str)
+
+    def _advance_time(delta: timedelta) -> None:
+        home_assistant.ws_time_advance(delta.total_seconds())
+
+    def _get_current_time_ws() -> datetime:
+        result = home_assistant.ws_time_get()
+        return datetime.fromisoformat(result["timestamp"])
 
     try:
         return TimeMachine(
-            apply_faketime=lambda content: docker.write_container_file("homeassistant", "/shared_data/.faketime", content),
-            on_time_set=_stabilize_after_time_jump,
+            apply_time_change=_apply_time_change,
+            advance_time=_advance_time,
+            get_current_time_ws=_get_current_time_ws,
             get_entity_state=lambda entity_id: home_assistant.get_state(entity_id),
-            timezone=timezone,  # e.g. "Europe/London" — used by jump_to_next for local-time arithmetic
+            timezone=timezone_str,
         )
     except ValueError as e:
         raise RuntimeError(
-            f"time_machine fixture: Home Assistant returned an unrecognised timezone '{timezone}'. Check the 'time_zone' field in your HA configuration.yaml. Underlying error: {e}"
+            f"time_machine fixture: Home Assistant returned an unrecognised timezone '{timezone_str}'. "
+            f"Check the 'time_zone' field in your HA configuration.yaml. "
+            f"See: https://github.com/HeadlessTarry/HomeAssistant-Test-Harness/blob/main/docs/usage.md "
+            f"Underlying error: {e}"
         ) from e
 
     # No teardown: time cannot be reset and persists across tests in the session

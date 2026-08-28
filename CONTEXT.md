@@ -76,8 +76,10 @@ The timestamp captured at the start of each test (via `pytest_runtest_setup` hoo
 _Avoid_: Test begin time, fixture start time
 
 **Stabilization**:
-The process of verifying Home Assistant is responsive after time manipulation, using health check polling with exponential backoff.
-Triggered automatically after time jumps via libfaketime to handle HA's asyncio event loop quirks.
+_Defined term removed._ Previously referred to health check polling after time jumps.
+With WebSocket-based time control replacing libfaketime, HA's asyncio event loop no longer
+stalls after time manipulation, making defensive stabilization unnecessary.
+The `check_health()` method and `is_unresponsive` flag remain for detecting genuine HA crashes.
 _Avoid_: Health check, recovery, wait period
 
 ## Design Principles

@@ -13,13 +13,18 @@ WebSocket commands exposed:
   ha_test_harness/entity/delete     - Remove an entity from HA entirely.
   ha_test_harness/template/freeze   - Freeze a template entity to prevent re-evaluation.
   ha_test_harness/template/unfreeze - Unfreeze a template entity to restore re-evaluation.
+  ha_test_harness/time/set          - Set absolute time (computes offset from real time).
+  ha_test_harness/time/advance      - Advance time by a relative offset.
+  ha_test_harness/time/get          - Get current fake time.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import time
 import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import voluptuous as vol
@@ -29,6 +34,7 @@ from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, Supp
 from homeassistant.helpers import discovery
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.typing import ConfigType
+from homeassistant.util import dt as dt_util
 
 from .entity import (
     VirtualBinarySensorEntity,
@@ -66,18 +72,23 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         "add_callbacks": {},  # domain -> async_add_entities callback
         "platform_ready": platform_ready_events,
         "frozen_entities": set(),  # entity_ids of frozen template entities
+        "time_offset": timedelta(0),  # offset applied to all HA time functions
     }
 
     for domain in SUPPORTED_DOMAINS:
         hass.async_create_task(discovery.async_load_platform(hass, domain, DOMAIN, {"domain": domain}, config))
 
     _apply_template_monkey_patch(hass)
+    _apply_time_monkey_patch(hass)
 
     websocket_api.async_register_command(hass, ws_create_entity)
     websocket_api.async_register_command(hass, ws_set_entity_state)
     websocket_api.async_register_command(hass, ws_delete_entity)
     websocket_api.async_register_command(hass, ws_freeze_template_entity)
     websocket_api.async_register_command(hass, ws_unfreeze_template_entity)
+    websocket_api.async_register_command(hass, ws_time_set)
+    websocket_api.async_register_command(hass, ws_time_advance)
+    websocket_api.async_register_command(hass, ws_time_get)
 
     hass.services.async_register(
         "ai_task",
@@ -132,6 +143,95 @@ def _apply_template_monkey_patch(hass: HomeAssistant) -> None:
 
     TemplateEntity._handle_results = _patched_handle_results  # type: ignore[method-assign]
     _LOGGER.info("[ha_test_harness] Monkey-patched TemplateEntity._handle_results for template freeze support")
+
+
+def _get_time_offset(hass: HomeAssistant) -> timedelta:
+    """Get the current time offset from hass.data."""
+    offset: timedelta = hass.data[DOMAIN]["time_offset"]
+    return offset
+
+
+def _set_time_offset(hass: HomeAssistant, offset: timedelta) -> None:
+    """Set the time offset in hass.data."""
+    hass.data[DOMAIN]["time_offset"] = offset
+
+
+def _apply_time_monkey_patch(hass: HomeAssistant) -> None:
+    """Monkey-patch HA time functions to apply a configurable offset.
+
+    Patches four functions so that all HA time queries return real_time + offset:
+      - homeassistant.util.dt.utcnow
+      - homeassistant.util.dt.now
+      - homeassistant.helpers.event.time_tracker_utcnow
+      - homeassistant.helpers.event.time_tracker_timestamp
+
+    The offset is stored in hass.data[DOMAIN]["time_offset"] and updated via
+    WebSocket commands (time/set, time/advance).
+    """
+    from homeassistant.helpers import event as event_helpers
+
+    def _patched_utcnow() -> datetime:
+        offset: timedelta = _get_time_offset(hass)
+        result: datetime = datetime.now(timezone.utc) + offset
+        return result
+
+    def _patched_now(time_zone: Any = None) -> datetime:
+        import homeassistant.util.dt as dt_util_module
+
+        offset: timedelta = _get_time_offset(hass)
+        if time_zone is None:
+            time_zone = dt_util_module.DEFAULT_TIME_ZONE
+        result: datetime = (datetime.now(timezone.utc) + offset).astimezone(time_zone)
+        return result
+
+    def _patched_time_tracker_utcnow() -> datetime:
+        return _patched_utcnow()
+
+    def _patched_time_tracker_timestamp() -> float:
+        offset: timedelta = _get_time_offset(hass)
+        result: float = time.time() + offset.total_seconds()
+        return result
+
+    dt_util.utcnow = _patched_utcnow
+    dt_util.now = _patched_now
+    event_helpers.time_tracker_utcnow = _patched_time_tracker_utcnow
+    event_helpers.time_tracker_timestamp = _patched_time_tracker_timestamp
+
+    _LOGGER.info("[ha_test_harness] Monkey-patched HA time functions for time control")
+
+
+def _fire_scheduled_timers(hass: HomeAssistant, utc_datetime: datetime) -> None:
+    """Fire scheduled timers that are now due after time advance.
+
+    Mirrors HA's async_fire_time_changed logic from tests/common.py.
+    Iterates scheduled timers and fires those that are now in the past.
+
+    Uses loop._scheduled which is a CPython implementation detail (heapq of TimerHandle).
+    We use a runtime attribute check (hasattr) instead of an HA version check because:
+    1. More robust - works regardless of HA version numbering
+    2. Follows Python duck-typing principles
+    3. If the attribute is removed in a future HA version, this gracefully degrades
+       (no timers fired, but no crash)
+    """
+    loop = hass.loop
+    if not hasattr(loop, "_scheduled"):
+        _LOGGER.warning("[ha_test_harness] Event loop does not have _scheduled attribute; cannot fire timers")
+        return
+
+    timestamp = utc_datetime.timestamp()
+
+    for task in loop._scheduled:
+        if not isinstance(task, asyncio.TimerHandle):
+            continue
+        if task.cancelled():
+            continue
+
+        mock_seconds_into_future = timestamp - time.time()
+        future_seconds = task.when() - (loop.time() + 0.0001)
+
+        if mock_seconds_into_future >= future_seconds:
+            task._run()
+            task.cancel()
 
 
 def _create_virtual_entity(domain: str, unique_id: str, entity_id: str, state: str, attributes: dict[str, Any]) -> Any:
@@ -332,3 +432,93 @@ async def ws_unfreeze_template_entity(hass: HomeAssistant, connection: websocket
     entity_id: str = msg["entity_id"]
     hass.data[DOMAIN]["frozen_entities"].discard(entity_id)
     connection.send_result(msg["id"], {"entity_id": entity_id})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "ha_test_harness/time/set",
+        vol.Required("timestamp"): str,
+    }
+)
+@websocket_api.async_response
+async def ws_time_set(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    """Handle ha_test_harness/time/set WebSocket command.
+
+    Sets the fake time to an absolute ISO 8601 timestamp. Computes the offset
+    from real time and stores it in hass.data[DOMAIN]["time_offset"]. Fires any
+    scheduled timers that fall within the advanced time window.
+    """
+    timestamp_str: str = msg["timestamp"]
+
+    try:
+        target_dt = datetime.fromisoformat(timestamp_str)
+        if target_dt.tzinfo is None:
+            target_dt = target_dt.replace(tzinfo=timezone.utc)
+        else:
+            target_dt = target_dt.astimezone(timezone.utc)
+    except (ValueError, AttributeError) as e:
+        connection.send_error(msg["id"], "invalid_timestamp", f"Invalid ISO 8601 timestamp: {timestamp_str!r}: {e}")
+        return
+
+    offset = target_dt - datetime.now(timezone.utc)
+    _set_time_offset(hass, offset)
+
+    _LOGGER.info("[ha_test_harness] Time set to %s (offset: %s)", target_dt.isoformat(), offset)
+
+    _fire_scheduled_timers(hass, target_dt)
+    await hass.async_block_till_done()
+
+    connection.send_result(msg["id"], {"timestamp": target_dt.isoformat(), "offset_seconds": offset.total_seconds()})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "ha_test_harness/time/advance",
+        vol.Required("seconds"): vol.Coerce(float),
+    }
+)
+@websocket_api.async_response
+async def ws_time_advance(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    """Handle ha_test_harness/time/advance WebSocket command.
+
+    Advances the fake time by the specified number of seconds (relative offset).
+    Adds to the existing offset in hass.data[DOMAIN]["time_offset"]. Fires any
+    scheduled timers that fall within the advanced time window.
+    """
+    seconds: float = msg["seconds"]
+    delta = timedelta(seconds=seconds)
+
+    current_offset = _get_time_offset(hass)
+    new_offset = current_offset + delta
+    _set_time_offset(hass, new_offset)
+    new_time = datetime.now(timezone.utc) + new_offset
+
+    _LOGGER.info("[ha_test_harness] Time advanced by %s seconds to %s", seconds, new_time.isoformat())
+
+    _fire_scheduled_timers(hass, new_time)
+    await hass.async_block_till_done()
+
+    connection.send_result(msg["id"], {"timestamp": new_time.isoformat(), "offset_seconds": new_offset.total_seconds()})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "ha_test_harness/time/get",
+    }
+)
+@websocket_api.async_response
+async def ws_time_get(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    """Handle ha_test_harness/time/get WebSocket command.
+
+    Returns the current fake time as an ISO 8601 timestamp and the current offset.
+    """
+    offset = _get_time_offset(hass)
+    fake_time = datetime.now(timezone.utc) + offset
+
+    connection.send_result(
+        msg["id"],
+        {
+            "timestamp": fake_time.isoformat(),
+            "offset_seconds": offset.total_seconds(),
+        },
+    )
