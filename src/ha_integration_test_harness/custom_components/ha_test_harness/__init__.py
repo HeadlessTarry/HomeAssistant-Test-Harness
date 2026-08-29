@@ -528,7 +528,6 @@ async def ws_time_set(hass: HomeAssistant, connection: websocket_api.ActiveConne
 
     _LOGGER.info("[ha_test_harness] Time set to %s (offset: %s)", target_dt.isoformat(), offset)
 
-    await _fire_scheduled_timers(hass, target_dt)
     await hass.async_block_till_done()
 
     connection.send_result(msg["id"], {"timestamp": target_dt.isoformat(), "offset_seconds": offset.total_seconds()})
