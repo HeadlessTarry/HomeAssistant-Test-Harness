@@ -130,6 +130,12 @@ class TestRateLimitedTemplatesFollowFakeTime:
         home_assistant.given_an_entity("switch.clock_coherence_alarm_foo", "on", {"next_trigger": "2030-07-02T08:30:00+00:00"})
         home_assistant.given_an_entity("switch.clock_coherence_alarm_bar", "on", {"next_trigger": "2030-07-01T07:00:00+00:00"})
 
-        time_machine.fast_forward(timedelta(seconds=5))
+        # Whether a given re-render is deferred depends on how the creations fall
+        # against the rate limit window, and a deferred re-render can itself defer the
+        # next one. Advancing repeatedly settles that out. It does not weaken the test:
+        # the regression deferred re-renders by the whole accumulated offset, which is
+        # hours, so no number of these advances would release it.
+        for _ in range(3):
+            time_machine.fast_forward(timedelta(seconds=5))
 
         home_assistant.assert_entity_state("sensor.clock_coherence_min_trigger", "2030-07-01T07:00:00+00:00")
