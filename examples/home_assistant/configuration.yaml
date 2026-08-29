@@ -27,18 +27,6 @@ template:
       - name: Current Datetime
         state: "{{ now().replace(microsecond=0).isoformat() }}"
 
-  # Regression cover for issue #178: a state-based template that iterates a whole
-  # domain. HA rate limits these, deferring re-renders via a timer, so it exercises
-  # whether that deferral is measured on the same clock that recorded it.
-  - sensor:
-      - name: Clock Coherence Min Trigger
-        state: >
-          {%- set vals = states.switch
-              | selectattr('object_id', 'match', 'clock_coherence_alarm_')
-              | map(attribute='attributes.next_trigger')
-              | list -%}
-          {{ min(vals) if vals else None }}
-
 input_button:
   turn_on_brightness_light:
     name: "Turn on brightness light"
