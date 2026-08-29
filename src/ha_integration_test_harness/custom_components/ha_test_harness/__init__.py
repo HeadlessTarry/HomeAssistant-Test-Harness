@@ -312,7 +312,7 @@ def _advance_scheduled_timers(hass: HomeAssistant, delta_seconds: float) -> int:
         return 0
 
     advanced = 0
-    for handle in list(loop._scheduled):
+    for handle in loop._scheduled:
         if not isinstance(handle, asyncio.TimerHandle) or handle.cancelled():
             continue
         if not _is_home_assistant_timer(handle):
