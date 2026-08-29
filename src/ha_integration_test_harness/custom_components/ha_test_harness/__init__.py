@@ -21,6 +21,7 @@ WebSocket commands exposed:
 from __future__ import annotations
 
 import asyncio
+import heapq
 import logging
 import time
 import uuid
@@ -48,6 +49,8 @@ from .entity import (
 DOMAIN = "ha_test_harness"
 SUPPORTED_DOMAINS = ["sensor", "binary_sensor", "switch", "light", "media_player", "select"]
 _PLATFORM_READY_TIMEOUT = 30  # seconds to wait for a platform callback to be registered
+_SETTLE_TIMEOUT = 2  # seconds to let a time change take effect before replying
+_REAL_TIME = time.time  # captured before time.time is patched, so the offset has a real base
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -73,6 +76,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         "platform_ready": platform_ready_events,
         "frozen_entities": set(),  # entity_ids of frozen template entities
         "time_offset": timedelta(0),  # offset applied to all HA time functions
+        "time_offset_cell": [0.0],  # same offset in seconds, read by the patched clock
     }
 
     for domain in SUPPORTED_DOMAINS:
@@ -152,98 +156,152 @@ def _get_time_offset(hass: HomeAssistant) -> timedelta:
 
 
 def _set_time_offset(hass: HomeAssistant, offset: timedelta) -> None:
-    """Set the time offset in hass.data."""
+    """Set the time offset in hass.data, and in the fast cell the clock patch reads."""
     hass.data[DOMAIN]["time_offset"] = offset
+    hass.data[DOMAIN]["time_offset_cell"][0] = offset.total_seconds()
 
 
 def _apply_time_monkey_patch(hass: HomeAssistant) -> None:
-    """Monkey-patch HA time functions to apply a configurable offset.
+    """Move every wall clock Home Assistant can read onto the fake clock at once.
 
-    Patches four functions so that all HA time queries return real_time + offset:
-      - homeassistant.util.dt.utcnow
-      - homeassistant.util.dt.now
-      - homeassistant.helpers.event.time_tracker_utcnow
-      - homeassistant.helpers.event.time_tracker_timestamp
+    Home Assistant reads the wall clock through several unrelated routes, and they must
+    agree. Where they disagree, HA compares a fake timestamp against a real one and
+    draws nonsense conclusions - a state that changed "3 hours ago", a rate limit that
+    expires in 13 hours, an automation that fires the instant time moves.
 
-    The offset is stored in hass.data[DOMAIN]["time_offset"] and updated via
-    WebSocket commands (time/set, time/advance).
+    The routes are:
+      - time.time(), read directly by homeassistant.core (state and event timestamps),
+        homeassistant.helpers.event and homeassistant.helpers.ratelimit
+      - homeassistant.helpers.entity.timer, a module-level alias of time.time bound at
+        import time, which stamps every entity state write
+      - homeassistant.util.dt.utcnow / now, the sanctioned helpers, which call
+        datetime.now() rather than time.time()
+      - homeassistant.helpers.event.time_tracker_utcnow / time_tracker_timestamp
+
+    Patching time.time covers the first group process-wide, including modules we have
+    not had to name. Aliases bound at import time are re-pointed individually, and the
+    datetime-based helpers are replaced separately because datetime.now() is
+    implemented in C and does not call time.time().
+
+    Deliberately NOT patched: time.monotonic. asyncio and aiohttp measure timeouts and
+    schedule callbacks against the monotonic clock, so leaving it real keeps the event
+    loop and the connection carrying these commands working normally while wall-clock
+    time moves.
+
+    The offset is stored in hass.data[DOMAIN]["time_offset"] and updated via the
+    time/set and time/advance WebSocket commands.
     """
+    from homeassistant.helpers import entity as entity_helpers
     from homeassistant.helpers import event as event_helpers
 
-    def _patched_utcnow() -> datetime:
-        offset: timedelta = _get_time_offset(hass)
-        result: datetime = datetime.now(timezone.utc) + offset
-        return result
+    real_time = _REAL_TIME
+    offset_cell: list[float] = hass.data[DOMAIN]["time_offset_cell"]
 
-    def _patched_now(time_zone: Any = None) -> datetime:
+    def _fake_time() -> float:
+        return real_time() + offset_cell[0]
+
+    def _fake_utcnow() -> datetime:
+        return datetime.now(timezone.utc) + timedelta(seconds=offset_cell[0])
+
+    def _fake_now(time_zone: Any = None) -> datetime:
         import homeassistant.util.dt as dt_util_module
 
-        offset: timedelta = _get_time_offset(hass)
         if time_zone is None:
             time_zone = dt_util_module.DEFAULT_TIME_ZONE
-        result: datetime = (datetime.now(timezone.utc) + offset).astimezone(time_zone)
-        return result
+        return _fake_utcnow().astimezone(time_zone)
 
-    def _patched_time_tracker_utcnow() -> datetime:
-        return _patched_utcnow()
-
-    def _patched_time_tracker_timestamp() -> float:
-        offset: timedelta = _get_time_offset(hass)
-        result: float = time.time() + offset.total_seconds()
-        return result
-
-    dt_util.utcnow = _patched_utcnow
-    dt_util.now = _patched_now
-    event_helpers.time_tracker_utcnow = _patched_time_tracker_utcnow
-    event_helpers.time_tracker_timestamp = _patched_time_tracker_timestamp
+    time.time = _fake_time
+    entity_helpers.timer = _fake_time
+    dt_util.utcnow = _fake_utcnow
+    dt_util.now = _fake_now
+    event_helpers.time_tracker_utcnow = _fake_utcnow
+    event_helpers.time_tracker_timestamp = _fake_time
 
     _LOGGER.info("[ha_test_harness] Monkey-patched HA time functions for time control")
 
 
-async def _fire_scheduled_timers(hass: HomeAssistant, utc_datetime: datetime) -> None:
-    """Fire scheduled timers that are now due after time advance.
+def _is_home_assistant_timer(handle: asyncio.TimerHandle) -> bool:
+    """Return True if the handle belongs to Home Assistant's own scheduling.
 
-    Mirrors HA's async_fire_time_changed logic from tests/common.py.
-    Collects due timers into a snapshot list before firing to avoid mutating
-    the heapq during iteration. Fires in batches with event loop yields between
-    batches to prevent rapid automation cascades.
+    The fake clock governs Home Assistant's behaviour, not the transport carrying the
+    test's commands. The event loop also holds timers for aiohttp (including the
+    heartbeat and timeout of the very WebSocket connection this command arrived on),
+    asyncio, zeroconf and bluetooth. Moving those deadlines makes aiohttp conclude the
+    connection has died mid-request, which surfaces to the test as a connection
+    timeout, so they are left on the real clock - which is also the clock they measure
+    against, since asyncio schedules on time.monotonic.
+    """
+    module = getattr(handle._callback, "__module__", None)  # type: ignore[attr-defined]
+    return isinstance(module, str) and (module == "homeassistant" or module.startswith("homeassistant."))
 
-    Uses loop._scheduled which is a CPython implementation detail (heapq of TimerHandle).
-    We use a runtime attribute check (hasattr) instead of an HA version check because:
-    1. More robust - works regardless of HA version numbering
-    2. Follows Python duck-typing principles
-    3. If the attribute is removed in a future HA version, this gracefully degrades
-       (no timers fired, but no crash)
+
+def _advance_scheduled_timers(hass: HomeAssistant, delta_seconds: float) -> int:
+    """Bring Home Assistant's pending timer deadlines forward onto the fake clock.
+
+    Callbacks are scheduled with loop.call_at, which measures against the monotonic
+    clock. The monotonic clock does not move when fake time does, so without this a
+    ``delay: 00:30:00`` would wait thirty real minutes and a time trigger three fake
+    hours away would never arrive.
+
+    Because time.time() is patched, both ways HA schedules a callback express their
+    deadline as a fake-time duration from the moment they were scheduled:
+
+      - relative, e.g. async_call_later and script ``delay:``:
+        ``call_at(loop.time() + duration)``
+      - absolute, e.g. async_track_point_in_utc_time and HA timer entities:
+        ``call_at(loop.time() + target_timestamp - time.time())``
+
+    So subtracting the offset delta from every pending deadline is correct for both,
+    and a callback becomes due exactly when that much fake time has elapsed. Once a
+    deadline is in the past the event loop runs it itself, in order, with normal
+    exception handling - no need to invoke callbacks by hand.
+
+    Uses loop._scheduled, a CPython implementation detail (a heapq of TimerHandle),
+    guarded by a runtime attribute check rather than an HA version check so that it
+    degrades to a warning rather than crashing if it ever disappears. The heap is
+    re-heapified because only a subset of handles is moved, which can reorder them.
     """
     loop = hass.loop
     if not hasattr(loop, "_scheduled"):
-        _LOGGER.warning("[ha_test_harness] Event loop does not have _scheduled attribute; cannot fire timers")
-        return
+        _LOGGER.warning("[ha_test_harness] Event loop does not have _scheduled attribute; cannot advance timers")
+        return 0
+    if delta_seconds <= 0:
+        return 0
 
-    timestamp = utc_datetime.timestamp()
-
-    due_timers: list[asyncio.TimerHandle] = []
-    for task in list(loop._scheduled):
-        if not isinstance(task, asyncio.TimerHandle):
+    advanced = 0
+    for handle in list(loop._scheduled):
+        if not isinstance(handle, asyncio.TimerHandle) or handle.cancelled():
             continue
-        if task.cancelled():
+        if not _is_home_assistant_timer(handle):
             continue
+        handle._when -= delta_seconds  # type: ignore[attr-defined]
+        advanced += 1
 
-        mock_seconds_into_future = timestamp - time.time()
-        future_seconds = task.when() - (loop.time() + 0.0001)
+    if advanced:
+        heapq.heapify(loop._scheduled)
 
-        if mock_seconds_into_future >= future_seconds:
-            due_timers.append(task)
+    return advanced
 
-    for task in due_timers:
-        if not task.cancelled():
-            try:
-                args = task._args or ()
-                task._context.run(task._callback, *args)  # type: ignore[attr-defined]
-            except Exception:
-                _LOGGER.exception("[ha_test_harness] Error firing timer callback")
-        task.cancel()
-        await asyncio.sleep(0)
+
+async def _settle_after_time_change(hass: HomeAssistant) -> None:
+    """Let the effects of a time change land, without waiting on sleeping automations.
+
+    hass.async_block_till_done() waits for every tracked task to finish. An automation
+    part-way through a ``delay:`` step is such a task, and its delay can only elapse
+    when fake time advances again - which cannot happen while this handler is still
+    holding the connection that would deliver the next time command. Waiting
+    unconditionally therefore deadlocks until the client's socket times out.
+
+    Bounding the wait keeps the common case (let automations run to completion before
+    replying) while returning promptly when something is deliberately asleep.
+    Cancelling async_block_till_done only abandons its asyncio.wait; the tasks
+    themselves are left running.
+    """
+    try:
+        async with asyncio.timeout(_SETTLE_TIMEOUT):
+            await hass.async_block_till_done()
+    except TimeoutError:
+        _LOGGER.debug("[ha_test_harness] Tasks still pending %ss after time change; replying anyway", _SETTLE_TIMEOUT)
 
 
 def _create_virtual_entity(domain: str, unique_id: str, entity_id: str, state: str, attributes: dict[str, Any]) -> Any:
@@ -472,13 +530,14 @@ async def ws_time_set(hass: HomeAssistant, connection: websocket_api.ActiveConne
         connection.send_error(msg["id"], "invalid_timestamp", f"Invalid ISO 8601 timestamp: {timestamp_str!r}: {e}")
         return
 
-    offset = target_dt - datetime.now(timezone.utc)
+    previous_offset = _get_time_offset(hass)
+    offset = target_dt - datetime.fromtimestamp(_REAL_TIME(), timezone.utc)
     _set_time_offset(hass, offset)
 
     _LOGGER.info("[ha_test_harness] Time set to %s (offset: %s)", target_dt.isoformat(), offset)
 
-    await _fire_scheduled_timers(hass, target_dt)
-    await hass.async_block_till_done()
+    _advance_scheduled_timers(hass, (offset - previous_offset).total_seconds())
+    await _settle_after_time_change(hass)
 
     connection.send_result(msg["id"], {"timestamp": target_dt.isoformat(), "offset_seconds": offset.total_seconds()})
 
@@ -503,12 +562,12 @@ async def ws_time_advance(hass: HomeAssistant, connection: websocket_api.ActiveC
     current_offset = _get_time_offset(hass)
     new_offset = current_offset + delta
     _set_time_offset(hass, new_offset)
-    new_time = datetime.now(timezone.utc) + new_offset
+    new_time = datetime.fromtimestamp(_REAL_TIME(), timezone.utc) + new_offset
 
     _LOGGER.info("[ha_test_harness] Time advanced by %s seconds to %s", seconds, new_time.isoformat())
 
-    await _fire_scheduled_timers(hass, new_time)
-    await hass.async_block_till_done()
+    _advance_scheduled_timers(hass, seconds)
+    await _settle_after_time_change(hass)
 
     connection.send_result(msg["id"], {"timestamp": new_time.isoformat(), "offset_seconds": new_offset.total_seconds()})
 
@@ -525,7 +584,7 @@ async def ws_time_get(hass: HomeAssistant, connection: websocket_api.ActiveConne
     Returns the current fake time as an ISO 8601 timestamp and the current offset.
     """
     offset = _get_time_offset(hass)
-    fake_time = datetime.now(timezone.utc) + offset
+    fake_time = datetime.fromtimestamp(_REAL_TIME(), timezone.utc) + offset
 
     connection.send_result(
         msg["id"],
