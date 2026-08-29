@@ -60,27 +60,27 @@ _real_time: Callable[[], float] = time.time
 _LOGGER = logging.getLogger(__name__)
 
 
-@dataclass
-class _TimeOffsetCell:
-    """Mutable holder for the offset between real and fake time.
+@dataclass(frozen=True)
+class TimeOffset:
+    """The offset between real and fake time, as both a timedelta and seconds.
 
-    Deliberately mutable and captured once by the patched clock functions, which run on
-    every time.time() call in the process and cannot afford a hass.data lookup each
-    time. Keeping the seconds view alongside the timedelta avoids reconstructing one
-    per call.
+    Frozen, and replaced wholesale rather than updated in place. Handlers routinely
+    read the offset, change it, then use the earlier value to work out how far time
+    moved; if the offset were mutable that earlier read would see the new value and the
+    difference would come out as zero. Immutability makes holding a reference safe, so
+    that mistake cannot be made.
 
-    Nothing outside this module's accessors should hold a reference to this object.
-    Callers get an immutable timedelta from _get_time_offset, so that reading the
-    offset before a change and using it after still yields the old value.
+    Carrying the seconds view alongside the timedelta means the patched clock, which
+    runs on every time.time() call in the process, does not reconstruct one per call.
     """
 
     delta: timedelta = timedelta(0)
     seconds: float = 0.0
 
-    def set(self, delta: timedelta) -> None:
-        """Update both views from a timedelta."""
-        self.delta = delta
-        self.seconds = delta.total_seconds()
+    @classmethod
+    def of(cls, delta: timedelta) -> TimeOffset:
+        """Build an offset from a timedelta, deriving the seconds view."""
+        return cls(delta, delta.total_seconds())
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -103,7 +103,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         "add_callbacks": {},  # domain -> async_add_entities callback
         "platform_ready": platform_ready_events,
         "frozen_entities": set(),  # entity_ids of frozen template entities
-        "time_offset": _TimeOffsetCell(),  # offset applied to all HA time functions
+        "time_offset": TimeOffset(),  # offset applied to all HA time functions
     }
 
     for domain in SUPPORTED_DOMAINS:
@@ -177,21 +177,18 @@ def _apply_template_monkey_patch(hass: HomeAssistant) -> None:
 
 
 def _get_time_offset(hass: HomeAssistant) -> timedelta:
-    """Get the current time offset as an immutable value.
-
-    Returns the timedelta rather than the cell holding it. Callers routinely read the
-    offset, change it, and then use the earlier value to work out how far time moved;
-    handing back the mutable cell would make that read see the new offset and compute a
-    delta of zero.
-    """
-    cell: _TimeOffsetCell = hass.data[DOMAIN]["time_offset"]
-    return cell.delta
+    """Get the current time offset."""
+    current: TimeOffset = hass.data[DOMAIN]["time_offset"]
+    return current.delta
 
 
 def _set_time_offset(hass: HomeAssistant, offset: timedelta) -> None:
-    """Set the time offset in hass.data."""
-    cell: _TimeOffsetCell = hass.data[DOMAIN]["time_offset"]
-    cell.set(offset)
+    """Replace the time offset in hass.data.
+
+    Replaces rather than updates, so that any TimeOffset already handed out keeps the
+    value it had when it was read.
+    """
+    hass.data[DOMAIN]["time_offset"] = TimeOffset.of(offset)
 
 
 def _apply_time_monkey_patch(hass: HomeAssistant) -> None:
@@ -228,10 +225,14 @@ def _apply_time_monkey_patch(hass: HomeAssistant) -> None:
     from homeassistant.helpers import event as event_helpers
 
     real_time = _real_time
-    offset_cell: _TimeOffsetCell = hass.data[DOMAIN]["time_offset"]
+    # Capture the integration's own data dict, not the TimeOffset inside it: the offset
+    # is replaced on every time change, so a captured TimeOffset would go stale. The
+    # dict itself is created once in async_setup and never reassigned.
+    domain_data: dict[str, Any] = hass.data[DOMAIN]
 
     def _fake_time() -> float:
-        return real_time() + offset_cell.seconds
+        offset: TimeOffset = domain_data["time_offset"]
+        return real_time() + offset.seconds
 
     def _fake_utcnow() -> datetime:
         return datetime.fromtimestamp(_fake_time(), timezone.utc)
