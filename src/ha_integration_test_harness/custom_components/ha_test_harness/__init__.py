@@ -21,12 +21,14 @@ WebSocket commands exposed:
 from __future__ import annotations
 
 import asyncio
+import functools
 import heapq
 import logging
 import time
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Callable
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
@@ -50,9 +52,35 @@ DOMAIN = "ha_test_harness"
 SUPPORTED_DOMAINS = ["sensor", "binary_sensor", "switch", "light", "media_player", "select"]
 _PLATFORM_READY_TIMEOUT = 30  # seconds to wait for a platform callback to be registered
 _SETTLE_TIMEOUT = 2  # seconds to let a time change take effect before replying
-_REAL_TIME = time.time  # captured before time.time is patched, so the offset has a real base
+
+# Captured before time.time is patched, so the offset has a real base.
+# This is the unpatched stdlib clock, used to compute the delta between real and fake time.
+_real_time: Callable[[], float] = time.time
 
 _LOGGER = logging.getLogger(__name__)
+
+
+@dataclass
+class _TimeOffsetCell:
+    """Mutable holder for the offset between real and fake time.
+
+    Deliberately mutable and captured once by the patched clock functions, which run on
+    every time.time() call in the process and cannot afford a hass.data lookup each
+    time. Keeping the seconds view alongside the timedelta avoids reconstructing one
+    per call.
+
+    Nothing outside this module's accessors should hold a reference to this object.
+    Callers get an immutable timedelta from _get_time_offset, so that reading the
+    offset before a change and using it after still yields the old value.
+    """
+
+    delta: timedelta = timedelta(0)
+    seconds: float = 0.0
+
+    def set(self, delta: timedelta) -> None:
+        """Update both views from a timedelta."""
+        self.delta = delta
+        self.seconds = delta.total_seconds()
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -75,8 +103,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         "add_callbacks": {},  # domain -> async_add_entities callback
         "platform_ready": platform_ready_events,
         "frozen_entities": set(),  # entity_ids of frozen template entities
-        "time_offset": timedelta(0),  # offset applied to all HA time functions
-        "time_offset_cell": [0.0],  # same offset in seconds, read by the patched clock
+        "time_offset": _TimeOffsetCell(),  # offset applied to all HA time functions
     }
 
     for domain in SUPPORTED_DOMAINS:
@@ -150,15 +177,21 @@ def _apply_template_monkey_patch(hass: HomeAssistant) -> None:
 
 
 def _get_time_offset(hass: HomeAssistant) -> timedelta:
-    """Get the current time offset from hass.data."""
-    offset: timedelta = hass.data[DOMAIN]["time_offset"]
-    return offset
+    """Get the current time offset as an immutable value.
+
+    Returns the timedelta rather than the cell holding it. Callers routinely read the
+    offset, change it, and then use the earlier value to work out how far time moved;
+    handing back the mutable cell would make that read see the new offset and compute a
+    delta of zero.
+    """
+    cell: _TimeOffsetCell = hass.data[DOMAIN]["time_offset"]
+    return cell.delta
 
 
 def _set_time_offset(hass: HomeAssistant, offset: timedelta) -> None:
-    """Set the time offset in hass.data, and in the fast cell the clock patch reads."""
-    hass.data[DOMAIN]["time_offset"] = offset
-    hass.data[DOMAIN]["time_offset_cell"][0] = offset.total_seconds()
+    """Set the time offset in hass.data."""
+    cell: _TimeOffsetCell = hass.data[DOMAIN]["time_offset"]
+    cell.set(offset)
 
 
 def _apply_time_monkey_patch(hass: HomeAssistant) -> None:
@@ -194,14 +227,14 @@ def _apply_time_monkey_patch(hass: HomeAssistant) -> None:
     from homeassistant.helpers import entity as entity_helpers
     from homeassistant.helpers import event as event_helpers
 
-    real_time = _REAL_TIME
-    offset_cell: list[float] = hass.data[DOMAIN]["time_offset_cell"]
+    real_time = _real_time
+    offset_cell: _TimeOffsetCell = hass.data[DOMAIN]["time_offset"]
 
     def _fake_time() -> float:
-        return real_time() + offset_cell[0]
+        return real_time() + offset_cell.seconds
 
     def _fake_utcnow() -> datetime:
-        return datetime.now(timezone.utc) + timedelta(seconds=offset_cell[0])
+        return datetime.fromtimestamp(_fake_time(), timezone.utc)
 
     def _fake_now(time_zone: Any = None) -> datetime:
         import homeassistant.util.dt as dt_util_module
@@ -230,8 +263,17 @@ def _is_home_assistant_timer(handle: asyncio.TimerHandle) -> bool:
     connection has died mid-request, which surfaces to the test as a connection
     timeout, so they are left on the real clock - which is also the clock they measure
     against, since asyncio schedules on time.monotonic.
+
+    functools.partial is unwrapped before reading __module__, because a partial reports
+    its own module rather than the wrapped function's and would be misclassified as
+    non-HA. No scheduled handle in the HA version this was written against actually
+    wraps its callback that way, so this is a guard against HA changing rather than a
+    fix for observed behaviour.
     """
-    module = getattr(handle._callback, "__module__", None)  # type: ignore[attr-defined]
+    callback = handle._callback  # type: ignore[attr-defined]
+    while isinstance(callback, functools.partial):
+        callback = callback.func
+    module = getattr(callback, "__module__", None)
     return isinstance(module, str) and (module == "homeassistant" or module.startswith("homeassistant."))
 
 
@@ -531,7 +573,7 @@ async def ws_time_set(hass: HomeAssistant, connection: websocket_api.ActiveConne
         return
 
     previous_offset = _get_time_offset(hass)
-    offset = target_dt - datetime.fromtimestamp(_REAL_TIME(), timezone.utc)
+    offset = target_dt - datetime.fromtimestamp(_real_time(), timezone.utc)
     _set_time_offset(hass, offset)
 
     _LOGGER.info("[ha_test_harness] Time set to %s (offset: %s)", target_dt.isoformat(), offset)
@@ -562,7 +604,7 @@ async def ws_time_advance(hass: HomeAssistant, connection: websocket_api.ActiveC
     current_offset = _get_time_offset(hass)
     new_offset = current_offset + delta
     _set_time_offset(hass, new_offset)
-    new_time = datetime.fromtimestamp(_REAL_TIME(), timezone.utc) + new_offset
+    new_time = datetime.fromtimestamp(_real_time(), timezone.utc) + new_offset
 
     _LOGGER.info("[ha_test_harness] Time advanced by %s seconds to %s", seconds, new_time.isoformat())
 
@@ -584,7 +626,7 @@ async def ws_time_get(hass: HomeAssistant, connection: websocket_api.ActiveConne
     Returns the current fake time as an ISO 8601 timestamp and the current offset.
     """
     offset = _get_time_offset(hass)
-    fake_time = datetime.fromtimestamp(_REAL_TIME(), timezone.utc) + offset
+    fake_time = datetime.fromtimestamp(_real_time(), timezone.utc) + offset
 
     connection.send_result(
         msg["id"],

@@ -120,3 +120,67 @@ class TestScheduledCallbacksFollowFakeTime:
         time_machine.jump_to_next(hour=3, minute=33)
 
         home_assistant.assert_entity_state("light.clock_coherence_time_light", "on")
+
+
+class TestRepeatedAdvancesDoNotFireEarly:
+    """Repeated advances must fire an automation once, when its window is actually up.
+
+    The reported symptom was entities oscillating on/off/on/off within 100ms of a time
+    jump. Two defects fed it: state timestamps sat on a different clock from now(), and
+    pending deadlines were compared against the *total* accumulated offset rather than
+    elapsed time - so once a session had banked an offset, every advance re-fired
+    everything scheduled within it.
+
+    Stepping through the window in small advances exercises both. A single advance, as
+    the sibling tests use, would not: the accumulated offset only builds up over
+    several.
+    """
+
+    def test_stepping_through_the_window_fires_the_automation_exactly_once(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
+        """The light holds 'on' for every step under 3h, then turns off crossing it."""
+        light = "light.clock_coherence_stepped_light"
+        home_assistant.given_an_entity(light, "off")
+        home_assistant.given_entity_has(light, labels=["clock_coherence_auto_off"])
+
+        home_assistant.call_action("homeassistant", "turn_on", {"entity_id": light})
+
+        # Five half-hour steps reach 2h30m, still inside the three hour window.
+        for _ in range(5):
+            time_machine.fast_forward(timedelta(minutes=30))
+            home_assistant.assert_entity_state(light, "on")
+
+        # The sixth crosses three hours, so now it must turn off - once.
+        time_machine.fast_forward(timedelta(minutes=30, seconds=15))
+        home_assistant.assert_entity_state(light, "off")
+
+
+class TestWebSocketStaysResponsive:
+    """Time control must keep replying while Home Assistant has work outstanding.
+
+    The reported symptom was the container going unresponsive during time jumps, seen
+    by the test as `TimeMachineError: ... Connection timed out`. The cause was the
+    handler waiting for every tracked task before replying: an automation part-way
+    through a `delay:` is such a task, and its delay can only elapse when time advances
+    again - which the handler is currently blocking.
+
+    Advancing repeatedly in steps smaller than the pending delay keeps a task
+    outstanding for the whole test, so every one of these calls has to return on its
+    own rather than by waiting the delay out.
+    """
+
+    def test_advances_reply_while_an_automation_is_mid_delay(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
+        """Ten advances, all inside a pending 30 minute delay, must each return."""
+        light = "light.clock_coherence_delayed_light"
+        home_assistant.given_an_entity(light, "off")
+        home_assistant.call_action("input_button", "press", {"entity_id": "input_button.clock_coherence_delay_trigger"})
+
+        # Ten one minute steps stay well inside the 30 minute delay, so the automation
+        # is still asleep for every one of them.
+        for _ in range(10):
+            result = home_assistant.ws_time_advance(60.0)
+            assert "timestamp" in result
+
+        home_assistant.assert_entity_state(light, "off")
+
+        # And the connection is still usable afterwards.
+        assert home_assistant.get_state("sun.sun") is not None
