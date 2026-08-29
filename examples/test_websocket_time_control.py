@@ -167,17 +167,22 @@ class TestWebSocketTimeControl:
 
     def test_timezone_aware_time_setting(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
         """Test that time can be set with timezone-aware datetimes."""
-        # Set time using a timezone-aware datetime (UTC)
-        target_utc = datetime(2027, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
+        # The target is derived from the current fake time rather than hard-coded so
+        # that it stays ahead of it. Time is session-scoped and only moves forward, and
+        # HA's recurring time listeners are armed against absolute targets: moving the
+        # clock backwards leaves them armed in the future, so entities driven by a
+        # time_pattern trigger (such as sensor.current_datetime) would legitimately
+        # keep reporting their last value.
+        target_utc = (self.get_fake_time(home_assistant) + timedelta(days=365)).replace(hour=12, minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
         home_assistant.ws_time_set(target_utc.isoformat())
 
         # Verify the time was set correctly
         state = home_assistant.get_state("sensor.current_datetime")
         sensor_time = self.parse_datetime(state["state"])
-        assert sensor_time.year == 2027
-        assert sensor_time.month == 6
-        assert sensor_time.day == 15
-        assert sensor_time.hour == 12
+        assert sensor_time.year == target_utc.year
+        assert sensor_time.month == target_utc.month
+        assert sensor_time.day == target_utc.day
+        assert sensor_time.hour == target_utc.hour
 
     def test_large_time_jump_across_months(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
         """Test that large time jumps across month boundaries work correctly."""

@@ -32,6 +32,8 @@ input_button:
     name: "Turn on brightness light"
   ai_task_trigger:
     name: "AI task trigger"
+  clock_coherence_delay_trigger:
+    name: "Clock coherence delay trigger"
 
 automation:
   # Turns on all lights labelled 'test_label_target' when the label automation
@@ -102,6 +104,77 @@ automation:
           - sensor.perf_test_4
     action:
       - delay: "00:00:01"
+
+  # Regression cover for issue #178: a template trigger comparing an entity's
+  # last_changed against now() - 3h. Only behaves correctly if both are on one clock.
+  - id: clock_coherence_auto_off
+    alias: "Clock coherence - Auto off after 3h"
+    mode: single
+    triggers:
+      - trigger: template
+        value_template: >
+          {% set threshold = now() - timedelta(hours=3) %}
+          {% set ns = namespace(found=false) %}
+          {% for eid in label_entities('clock_coherence_auto_off') %}
+            {% if states[eid].state == 'on' and states[eid].last_changed <= threshold %}
+              {% set ns.found = true %}
+            {% endif %}
+          {% endfor %}
+          {{ ns.found }}
+    actions:
+      - action: homeassistant.turn_off
+        target:
+          entity_id: >
+            {% set threshold = now() - timedelta(hours=3) %}
+            {% set ns = namespace(entities=[]) %}
+            {% for eid in label_entities('clock_coherence_auto_off') %}
+              {% if states[eid].state == 'on' and states[eid].last_changed <= threshold %}
+                {% set ns.entities = ns.entities + [eid] %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.entities }}
+
+  # Regression cover for issue #178: an action that sleeps on a long delay, which
+  # must elapse on the fake clock and must not block the time-control response.
+  - id: clock_coherence_long_delay
+    alias: "Clock coherence - Long delay action"
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: input_button.clock_coherence_delay_trigger
+    actions:
+      - delay: "00:30:00"
+      - action: light.turn_on
+        target:
+          entity_id: light.clock_coherence_delayed_light
+
+  # Regression cover for issue #178: fires on the timer.finished event, checking
+  # that HA timer entities complete when fake time passes their end.
+  - id: clock_coherence_timer_finished
+    alias: "Clock coherence - Timer finished event"
+    mode: single
+    triggers:
+      - trigger: event
+        event_type: timer.finished
+        event_data:
+          entity_id: timer.test_timer
+    actions:
+      - action: light.turn_on
+        target:
+          entity_id: light.clock_coherence_timer_light
+
+  # Regression cover for issue #178: a wall-clock time trigger, which must fire
+  # when fake time reaches it.
+  - id: clock_coherence_time_trigger
+    alias: "Clock coherence - Time trigger"
+    mode: single
+    triggers:
+      - trigger: time
+        at: "03:33:00"
+    actions:
+      - action: light.turn_on
+        target:
+          entity_id: light.clock_coherence_time_light
 
   # Test automation: calls ai_task.generate_data and stores the response in a variable,
   # then uses that variable to set a sensor state. Used by test_ai_task.py to verify
