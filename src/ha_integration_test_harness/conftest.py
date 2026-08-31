@@ -88,15 +88,12 @@ def ha_image(request: pytest.FixtureRequest) -> Optional[str]:
     """Provide Home Assistant Docker image for integration tests.
 
     This fixture allows tests to override the Home Assistant Docker image via:
-    1. pytest configuration (ha_image in pyproject.toml)
-    2. Environment variable (HA_IMAGE)
+    1. Environment variable (HA_IMAGE)
+    2. pytest configuration (ha_image in pyproject.toml)
     3. Overriding this fixture in conftest.py
 
-    Priority order:
-    1. Fixture override (highest)
-    2. pytest configuration (ha_image)
-    3. Environment variable (HA_IMAGE)
-    4. Default from docker-compose.yaml (lowest)
+    If not set, defaults to the image specified in docker-compose.yaml
+    (typically homeassistant/home-assistant:stable).
 
     Args:
         request: The pytest request object for accessing configuration options.
@@ -104,13 +101,13 @@ def ha_image(request: pytest.FixtureRequest) -> Optional[str]:
     Returns:
         Optional[str]: The Home Assistant Docker image to use, or None to use the default.
     """
-    config_image = request.config.getini("ha_image")
-    if config_image:
-        return str(config_image)
-
     env_image = os.environ.get("HA_IMAGE")
     if env_image:
         return env_image
+
+    config_image = request.config.getini("ha_image")
+    if config_image:
+        return str(config_image)
 
     return None
 
