@@ -59,8 +59,8 @@ class TestEntityBuilderChaining:
         assert config["area_id"] == "study"
 
     def test_chain_area_with_labels(self, home_assistant: HomeAssistant) -> None:
-        """Test chaining in_area() with labels parameter."""
-        home_assistant.given_an_entity("light.test_chain_labels", "off").in_area("study", labels=["presence"])
+        """Test chaining in_area() and with_labels()."""
+        home_assistant.given_an_entity("light.test_chain_labels", "off").in_area("study").with_labels(["presence"])
 
         state = home_assistant.get_state("light.test_chain_labels")
         assert state is not None
@@ -82,7 +82,7 @@ class TestEntityBuilderChaining:
 
     def test_full_chain(self, home_assistant: HomeAssistant) -> None:
         """Test a full chain with all builder methods."""
-        home_assistant.given_an_entity("binary_sensor.test_full_chain", "off").with_device_class("occupancy").in_area("study", labels=["presence", "security"]).with_attributes(
+        home_assistant.given_an_entity("binary_sensor.test_full_chain", "off").with_device_class("occupancy").in_area("study").with_labels(["presence", "security"]).with_attributes(
             {"custom_attr": "value"}
         )
 

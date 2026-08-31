@@ -88,7 +88,7 @@ class HomeAssistant:
 
         Otherwise, the state is injected directly via the REST API (``POST /api/states``).
         REST-injected entities are written only to the HA state machine — they are **not**
-        registered in the entity registry and cannot be used with ``given_entity_has()``.
+        registered in the entity registry and cannot be used with area/label assignment.
 
         Before the first ``set_state()`` call per entity per test, the current state is
         snapshot and will be automatically restored after the test completes. If the entity
@@ -586,10 +586,7 @@ class HomeAssistant:
         if entity_id in self._created_entities:
             # Entity already exists — update its state in place.
             self.set_state(entity_id, state)
-            # Fetch current attributes so the builder can merge on subsequent with_attributes() calls.
-            current_state = self.get_state(entity_id)
-            current_attributes = current_state.get("attributes", {}) if current_state else {}
-            return EntityBuilder(self, entity_id, initial_attributes=current_attributes)
+            return EntityBuilder(self, entity_id)
 
         payload: dict[str, Any] = {"id": 1, "type": "ha_test_harness/entity/create", "entity_id": entity_id, "state": state}
         # Use a generous timeout: the server-side handler waits up to 30s for the platform to be
@@ -608,7 +605,7 @@ class HomeAssistant:
         handshake, sends ``payload``, and returns the result message.
 
         Note: A new TCP connection and auth exchange is opened per call. Operations like
-        ``given_an_entity()`` followed by ``given_entity_has()`` in the same test will each
+        ``given_an_entity()`` followed by area/label assignment in the same test will each
         open their own connection. This is acceptable for a test harness, but if suite startup
         latency becomes a concern, consider introducing a persistent/reusable connection.
 
@@ -820,13 +817,16 @@ class HomeAssistant:
         self._ensure_labels_exist(labels)
         self._update_entity_registry(entity_id, labels=labels)
 
-    def given_entity_has(
+    def _given_entity_has(
         self,
         entity_id: str,
         area: Optional[str] = _UNSET,
         labels: Optional[list[str]] = _UNSET,
     ) -> None:
         """Assign an area and/or labels to an entity for testing purposes, with automatic rollback.
+
+        Internal method retained for rollback operations. Use the EntityBuilder API
+        (``given_an_entity().in_area()`` and ``.with_labels()``) instead.
 
         Saves the entity's current area and labels before any modification so they can be
         restored at the end of the test by ``restore_entity_config()``. If called multiple
@@ -856,27 +856,6 @@ class HomeAssistant:
             ValueError: If neither ``area`` nor ``labels`` is provided.
             HomeAssistantClientError: If the entity registry cannot be read or updated, or
                 if creating a missing area or label fails.
-
-        Examples:
-            Set area only::
-
-                home_assistant.given_entity_has("light.living_room", area="living_room")
-
-            Set labels only::
-
-                home_assistant.given_entity_has("light.living_room", labels=["night_mode"])
-
-            Set both area and labels::
-
-                home_assistant.given_entity_has("light.living_room", area="living_room", labels=["night_mode"])
-
-            Remove area assignment::
-
-                home_assistant.given_entity_has("light.living_room", area=None)
-
-            Remove all labels::
-
-                home_assistant.given_entity_has("light.living_room", labels=None)
         """
         if area is _UNSET and labels is _UNSET:
             raise ValueError("At least one of 'area' or 'labels' must be explicitly provided")
@@ -891,10 +870,10 @@ class HomeAssistant:
         self._update_entity_registry(entity_id, area=area, labels=labels)
 
     def restore_entity_config(self) -> None:
-        """Restore all entity labels and areas modified by given_entity_has() to their original values.
+        """Restore all entity labels and areas modified by _given_entity_has() to their original values.
 
         This method is called automatically after each test function completes.
-        It restores both labels and area for all entities modified via ``given_entity_has()``.
+        It restores both labels and area for all entities modified via ``_given_entity_has()``.
         Successfully restored entities are cleared from tracking immediately, while
         failed restorations remain tracked.
 
@@ -906,12 +885,12 @@ class HomeAssistant:
 
         for entity_id, original_config in list(self._entity_original_config.items()):
             try:
-                # Re-entering given_entity_has() here is safe: the snapshot guard
+                # Re-entering _given_entity_has() here is safe: the snapshot guard
                 # ("if entity_id not in self._entity_original_config") is still False
                 # for each entity_id because we have not yet deleted entries from
                 # _entity_original_config (that happens in the loop below, only after
                 # success).  So the pre-test config is not overwritten by the restore call.
-                self.given_entity_has(entity_id, area=original_config["area_id"], labels=original_config["labels"])
+                self._given_entity_has(entity_id, area=original_config["area_id"], labels=original_config["labels"])
                 successfully_restored.append(entity_id)
             except HomeAssistantClientError as e:
                 errors.append(str(e))

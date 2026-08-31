@@ -11,7 +11,7 @@ class TestAssertEntityState:
 
     @pytest.fixture(autouse=True)
     def assign_test_entity(self, home_assistant: HomeAssistant) -> None:
-        """Create the test entity."""
+        """Create the virtual entity."""
         home_assistant.given_an_entity(self.an_entity, state="on").with_attributes({"unit_of_measurement": "°C", "icon": "mdi:thermometer", "min": 10, "max": 30})
 
     def test_assert_entity_state_with_built_in_polling(self, home_assistant: HomeAssistant) -> None:

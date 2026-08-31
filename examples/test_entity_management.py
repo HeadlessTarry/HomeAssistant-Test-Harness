@@ -103,16 +103,14 @@ class TestEntitiesWithAreasAndLabels:
 
     @pytest.fixture(autouse=True)
     def create_test_entities(self, home_assistant: HomeAssistant) -> None:
-        """Create the test entity."""
-        home_assistant.given_an_entity(self.light_entity, state="off")
-        # Assign an area and a label to the newly created entity
-        home_assistant.given_entity_has(self.light_entity, area="test_room", labels=["test_label_target"])
+        """Create the virtual entity."""
+        home_assistant.given_an_entity(self.light_entity, state="off").in_area("test_room").with_labels(["test_label_target"])
 
     def test_given_an_entity_then_assign_area_and_label(self, home_assistant: HomeAssistant) -> None:
         """Test that an entity created via given_an_entity() supports area and label assignment.
 
         Because given_an_entity() registers entities in the HA entity registry (with a
-        unique_id), they can be targeted by given_entity_has() in the same test — a
+        unique_id), they can be targeted by the builder API in the same test — a
         combination that was not possible with REST-based entity creation.
         """
         # Entity state should still be readable after registry updates
