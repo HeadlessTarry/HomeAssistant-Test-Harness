@@ -10,6 +10,7 @@ from urllib.parse import urlparse, urlunparse
 import requests
 import websocket
 
+from .entity_builder import EntityBuilder
 from .exceptions import HomeAssistantClientError, HomeAssistantTimeoutError
 
 logger = logging.getLogger(__name__)
@@ -557,13 +558,13 @@ class HomeAssistant:
             time.sleep(interval)
             interval = min(interval * 2, _HEALTH_CHECK_MAX_INTERVAL)
 
-    def given_an_entity(self, entity_id: str, state: str, attributes: Optional[dict[str, Any]] = None) -> None:
+    def given_an_entity(self, entity_id: str, state: str) -> EntityBuilder:
         """Create a fully-registered entity for testing purposes with automatic cleanup.
 
         Creates the entity via the bundled ``ha_test_harness`` custom integration using
         a WebSocket command. The entity is registered in the HA entity registry (it has a
-        ``unique_id``), appears in the HA UI, and supports area/label assignment via
-        ``given_entity_has()``. Supported domains: ``sensor``, ``binary_sensor``,
+        ``unique_id``), appears in the HA UI, and supports area/label assignment via the
+        returned builder. Supported domains: ``sensor``, ``binary_sensor``,
         ``switch``, ``light``, ``media_player``, ``select``.
 
         If called a second time with the same ``entity_id``, the existing entity's state
@@ -574,7 +575,9 @@ class HomeAssistant:
             entity_id: The entity ID to create (e.g., 'sensor.test_temp'). The domain prefix
                 must be one of the supported domains listed above.
             state: The initial state value for the entity.
-            attributes: Optional dictionary of attributes to set for the entity.
+
+        Returns:
+            An EntityBuilder instance for fluent configuration of the entity.
 
         Raises:
             HomeAssistantClientError: If the entity could not be created, or if the domain
@@ -582,12 +585,10 @@ class HomeAssistant:
         """
         if entity_id in self._created_entities:
             # Entity already exists — update its state in place.
-            self.set_state(entity_id, state, attributes)
-            return
+            self.set_state(entity_id, state)
+            return EntityBuilder(self, entity_id)
 
         payload: dict[str, Any] = {"id": 1, "type": "ha_test_harness/entity/create", "entity_id": entity_id, "state": state}
-        if attributes is not None:
-            payload["attributes"] = attributes
         # Use a generous timeout: the server-side handler waits up to 30s for the platform to be
         # ready (e.g. on the very first entity creation after HA starts), so the socket timeout must
         # exceed that to avoid a spurious WebSocket timeout error.
@@ -595,6 +596,7 @@ class HomeAssistant:
         if not response.get("success"):
             raise HomeAssistantClientError(f"Failed to create entity {entity_id} via ha_test_harness: {response}")
         self._created_entities.add(entity_id)
+        return EntityBuilder(self, entity_id)
 
     def _ws_send_receive(self, payload: dict[str, Any], timeout: int = 10) -> dict[str, Any]:
         """Authenticate over the WebSocket API and send a single command, returning the response.
@@ -774,6 +776,47 @@ class HomeAssistant:
                     raise HomeAssistantClientError(f"Failed to create label '{label_id}': {create_response}")
                 self._known_label_ids.add(label_id)
 
+    def _track_entity_config_for_rollback(self, entity_id: str) -> None:
+        """Save the entity's current area and labels for rollback if not already saved.
+
+        Called by EntityBuilder before the first area/label change to ensure the pre-test
+        configuration can be restored. If called multiple times for the same entity_id,
+        only the first call saves the config (preserving the original state).
+
+        Args:
+            entity_id: The entity ID to track for rollback.
+        """
+        if entity_id not in self._entity_original_config:
+            self._entity_original_config[entity_id] = self._get_entity_config(entity_id)
+
+    def _set_entity_area(self, entity_id: str, area: str) -> None:
+        """Assign an area to an entity, creating the area if it doesn't exist.
+
+        Args:
+            entity_id: The entity ID to update.
+            area: The area ID to assign.
+
+        Raises:
+            HomeAssistantClientError: If the area cannot be created or the entity registry
+                cannot be updated.
+        """
+        self._ensure_area_exists(area)
+        self._update_entity_registry(entity_id, area=area)
+
+    def _set_entity_labels(self, entity_id: str, labels: list[str]) -> None:
+        """Assign labels to an entity, creating any labels that don't exist.
+
+        Args:
+            entity_id: The entity ID to update.
+            labels: The list of label IDs to assign.
+
+        Raises:
+            HomeAssistantClientError: If the labels cannot be created or the entity registry
+                cannot be updated.
+        """
+        self._ensure_labels_exist(labels)
+        self._update_entity_registry(entity_id, labels=labels)
+
     def given_entity_has(
         self,
         entity_id: str,
@@ -835,13 +878,12 @@ class HomeAssistant:
         if area is _UNSET and labels is _UNSET:
             raise ValueError("At least one of 'area' or 'labels' must be explicitly provided")
 
+        self._track_entity_config_for_rollback(entity_id)
+
         if area is not _UNSET and area is not None:
             self._ensure_area_exists(area)
         if labels is not _UNSET and labels is not None:
             self._ensure_labels_exist(labels)
-
-        if entity_id not in self._entity_original_config:
-            self._entity_original_config[entity_id] = self._get_entity_config(entity_id)
 
         self._update_entity_registry(entity_id, area=area, labels=labels)
 

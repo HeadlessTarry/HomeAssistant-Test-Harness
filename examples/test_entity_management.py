@@ -36,7 +36,7 @@ class TestEntitiesManagedByTests:
     def create_test_entities(self, home_assistant: HomeAssistant) -> None:
         """Create the test entities."""
         for entity in self.test_entities:
-            home_assistant.given_an_entity(entity, state="off", attributes={"attr_key": "attr_val"})
+            home_assistant.given_an_entity(entity, state="off").with_attributes({"attr_key": "attr_val"})
         # No manual cleanup needed - the fixture will handle it automatically!
 
     def test_read_state_of_created_entities(self, home_assistant: HomeAssistant) -> None:
@@ -49,7 +49,7 @@ class TestEntitiesManagedByTests:
         """Test that updating an entity via given_an_entity() doesn't create duplicates."""
         sample_entity = self.test_entities[0]
         # Re-create the same entity but with updated state and attributes
-        home_assistant.given_an_entity(sample_entity, "on", attributes={"updated": True})
+        home_assistant.given_an_entity(sample_entity, "on").with_attributes({"updated": True})
 
         home_assistant.assert_entity_state(sample_entity, expected_state="on", expected_attributes={"updated": True})
 
@@ -81,7 +81,7 @@ class TestEntitiesManagedByTests:
         entity_id = "switch.test_create_modify_remove"
 
         # Create entity
-        home_assistant.given_an_entity(entity_id, state="off", attributes={"foo": "bar"})
+        home_assistant.given_an_entity(entity_id, state="off").with_attributes({"foo": "bar"})
         home_assistant.assert_entity_state(entity_id, expected_state="off", expected_attributes={"foo": "bar"})
 
         # Modify entity state
@@ -236,31 +236,19 @@ class TestSelectEntity:
 
     def test_create_select_entity_with_options(self, home_assistant: HomeAssistant) -> None:
         """Test that a select entity can be created with options via given_an_entity()."""
-        home_assistant.given_an_entity(
-            "select.house_mode",
-            "Home",
-            attributes={"options": ["Home", "Away", "Night"]},
-        )
+        home_assistant.given_an_entity("select.house_mode", "Home").with_attributes({"options": ["Home", "Away", "Night"]})
         home_assistant.assert_entity_state("select.house_mode", "Home", expected_attributes={"options": ["Home", "Away", "Night"]})
 
     def test_select_option_via_action(self, home_assistant: HomeAssistant) -> None:
         """Test that select_option action changes the selected option."""
-        home_assistant.given_an_entity(
-            "select.house_mode",
-            "Home",
-            attributes={"options": ["Home", "Away", "Night"]},
-        )
+        home_assistant.given_an_entity("select.house_mode", "Home").with_attributes({"options": ["Home", "Away", "Night"]})
 
         home_assistant.call_action("select", "select_option", {"entity_id": "select.house_mode", "option": "Away"})
         home_assistant.assert_entity_state("select.house_mode", "Away")
 
     def test_select_options_accessible(self, home_assistant: HomeAssistant) -> None:
         """Test that the options list is accessible in entity state attributes."""
-        home_assistant.given_an_entity(
-            "select.house_mode",
-            "Home",
-            attributes={"options": ["Home", "Away", "Night"]},
-        )
+        home_assistant.given_an_entity("select.house_mode", "Home").with_attributes({"options": ["Home", "Away", "Night"]})
         state = home_assistant.get_state("select.house_mode")
         assert state is not None
         assert state["attributes"]["options"] == ["Home", "Away", "Night"]
