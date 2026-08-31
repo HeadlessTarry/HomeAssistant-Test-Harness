@@ -586,7 +586,10 @@ class HomeAssistant:
         if entity_id in self._created_entities:
             # Entity already exists — update its state in place.
             self.set_state(entity_id, state)
-            return EntityBuilder(self, entity_id)
+            # Fetch current attributes so the builder can merge on subsequent with_attributes() calls.
+            current_state = self.get_state(entity_id)
+            current_attributes = current_state.get("attributes", {}) if current_state else {}
+            return EntityBuilder(self, entity_id, initial_attributes=current_attributes)
 
         payload: dict[str, Any] = {"id": 1, "type": "ha_test_harness/entity/create", "entity_id": entity_id, "state": state}
         # Use a generous timeout: the server-side handler waits up to 30s for the platform to be

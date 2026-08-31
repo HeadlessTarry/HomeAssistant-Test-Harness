@@ -7,9 +7,9 @@ if TYPE_CHECKING:
 
 
 class EntityBuilder:
-    """Fluent builder for configuring test entities.
+    """Fluent builder for configuring virtual entities.
 
-    Provides a chainable API for setting up test entities with device classes,
+    Provides a chainable API for setting up virtual entities with device classes,
     areas, labels, and custom attributes. Each method applies changes immediately
     via the underlying Home Assistant client.
 
@@ -18,16 +18,23 @@ class EntityBuilder:
     same entity_id; each operates independently.
     """
 
-    def __init__(self, client: "HomeAssistant", entity_id: str) -> None:
+    def __init__(self, client: "HomeAssistant", entity_id: str, initial_attributes: Optional[dict[str, Any]] = None) -> None:
         """Initialize the EntityBuilder.
 
         Args:
             client: The HomeAssistant client instance.
             entity_id: The entity ID being configured.
+            initial_attributes: Optional initial attributes to track for merging.
         """
         self._client = client
         self._entity_id = entity_id
-        self._attributes: dict[str, Any] = {}
+        self._attributes: dict[str, Any] = initial_attributes.copy() if initial_attributes else {}
+
+    def _apply_attributes(self) -> None:
+        """Apply tracked attributes to the entity via set_state()."""
+        state_response = self._client.get_state(self._entity_id)
+        current_state = state_response.get("state", "") if state_response else ""
+        self._client.set_state(self._entity_id, current_state, self._attributes)
 
     def with_device_class(self, device_class: str) -> Self:
         """Set the device_class attribute for the entity.
@@ -39,9 +46,7 @@ class EntityBuilder:
             Self for method chaining.
         """
         self._attributes["device_class"] = device_class
-        state_response = self._client.get_state(self._entity_id)
-        current_state = state_response.get("state", "") if state_response else ""
-        self._client.set_state(self._entity_id, current_state, self._attributes)
+        self._apply_attributes()
         return self
 
     def in_area(self, area: str, labels: Optional[list[str]] = None) -> Self:
@@ -92,7 +97,5 @@ class EntityBuilder:
             Self for method chaining.
         """
         self._attributes.update(attributes)
-        state_response = self._client.get_state(self._entity_id)
-        current_state = state_response.get("state", "") if state_response else ""
-        self._client.set_state(self._entity_id, current_state, self._attributes)
+        self._apply_attributes()
         return self

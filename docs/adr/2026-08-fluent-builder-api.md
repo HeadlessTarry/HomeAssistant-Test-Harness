@@ -1,4 +1,4 @@
-# 🂡 Fluent Builder API for Test Entity Setup
+# 🂡 Fluent Builder API for Virtual Entity Setup
 
 ## Status
 
