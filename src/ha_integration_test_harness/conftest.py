@@ -1,6 +1,7 @@
 """Pytest configuration and fixtures for integration tests."""
 
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Generator, Optional
@@ -66,16 +67,53 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     Adds the 'ha_persistent_entities_path' config key to allow test suites
     to specify a YAML file containing persistent entity definitions
     that should be registered with Home Assistant during container startup.
+
+    Adds the 'ha_image' config key to allow test suites to specify a custom
+    Home Assistant Docker image (e.g., "homeassistant/home-assistant:2026.7").
     """
     parser.addini(
         "ha_persistent_entities_path",
         "Path to YAML file containing persistent Home Assistant entities (relative to pytest config file)",
         default=None,
     )
+    parser.addini(
+        "ha_image",
+        "Home Assistant Docker image to use (e.g., 'homeassistant/home-assistant:2026.7')",
+        default=None,
+    )
 
 
 @pytest.fixture(scope="session")
-def docker(request: pytest.FixtureRequest) -> Generator[DockerComposeManager, None, None]:
+def ha_image(request: pytest.FixtureRequest) -> Optional[str]:
+    """Provide Home Assistant Docker image for integration tests.
+
+    This fixture allows tests to override the Home Assistant Docker image via:
+    1. Environment variable (HA_IMAGE)
+    2. pytest configuration (ha_image in pyproject.toml)
+    3. Overriding this fixture in conftest.py
+
+    If not set, defaults to the image specified in docker-compose.yaml
+    (typically homeassistant/home-assistant:stable).
+
+    Args:
+        request: The pytest request object for accessing configuration options.
+
+    Returns:
+        Optional[str]: The Home Assistant Docker image to use, or None to use the default.
+    """
+    env_image = os.environ.get("HA_IMAGE")
+    if env_image:
+        return env_image
+
+    config_image = request.config.getini("ha_image")
+    if config_image:
+        return str(config_image)
+
+    return None
+
+
+@pytest.fixture(scope="session")
+def docker(request: pytest.FixtureRequest, ha_image: Optional[str]) -> Generator[DockerComposeManager, None, None]:
     """Provide Docker Compose manager for integration tests.
 
     This fixture creates and starts Docker containers for Home Assistant and AppDaemon,
@@ -113,7 +151,7 @@ def docker(request: pytest.FixtureRequest) -> Generator[DockerComposeManager, No
 
     manager: Optional[DockerComposeManager] = None
     try:
-        manager = DockerComposeManager(persistent_entities_path=persistent_entities_path)
+        manager = DockerComposeManager(persistent_entities_path=persistent_entities_path, ha_image=ha_image)
         # Store the manager in session stash so it can be accessed by hooks
         request.session.stash[_docker_manager_key] = manager
         manager.start()
