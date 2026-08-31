@@ -127,6 +127,64 @@ The environment supports **parallel test runs** via Docker Compose project names
 
 This design allows multiple developers or CI jobs to run tests simultaneously without conflicts.
 
+## Home Assistant Image Override
+
+By default, the test harness uses the `homeassistant/home-assistant:stable` Docker image.
+You can override this to test against a specific Home Assistant version (e.g. a beta or
+release candidate) before `stable` catches up.
+
+### Override Methods
+
+Three methods are supported, in priority order:
+
+#### 1. Environment Variable
+
+Set `HA_IMAGE` before running tests:
+
+```bash
+export HA_IMAGE="homeassistant/home-assistant:2026.7"
+pytest
+```
+
+#### 2. pytest Configuration
+
+Add `ha_image` to your `pyproject.toml`:
+
+```toml
+[tool.pytest.ini_options]
+ha_image = "homeassistant/home-assistant:2026.7"
+```
+
+#### 3. Fixture Override
+
+Override the `ha_image` fixture in your `conftest.py`:
+
+```python
+import pytest
+
+@pytest.fixture(scope="session")
+def ha_image():
+    return "homeassistant/home-assistant:2026.7"
+```
+
+### Priority
+
+When multiple methods are used, the priority order is:
+
+1. Environment variable (`HA_IMAGE`) — highest
+2. pytest configuration (`ha_image`)
+3. Fixture override (the fixture checks env var and config, so overriding the fixture itself gives full control)
+4. Default from `docker-compose.yaml` (`homeassistant/home-assistant:stable`) — lowest
+
+### Example Use Case
+
+Testing against a beta version before it reaches `stable`:
+
+```bash
+# Test against the 2026.7 beta
+HA_IMAGE="homeassistant/home-assistant:2026.7b0" pytest
+```
+
 ## Writing Tests
 
 ### Basic Test
