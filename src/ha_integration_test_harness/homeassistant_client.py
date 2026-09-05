@@ -47,7 +47,7 @@ class HomeAssistant:
         self._created_entities: set[str] = set()
         self._entity_original_config: dict[str, dict[str, Any]] = {}
         self._entity_original_state: dict[str, Optional[dict[str, Any]]] = {}
-        self._frozen_template_entities: set[str] = set()
+        self._frozen_entities: set[str] = set()
         self._known_area_ids: Optional[set[str]] = None
         self._known_label_ids: Optional[set[str]] = None
         self._is_unresponsive: bool = False
@@ -146,7 +146,7 @@ class HomeAssistant:
             self._handle_http_error(e, "POST", url)
 
         if _freeze:
-            self._freeze_template_entity(entity_id)
+            self._freeze_entity(entity_id)
 
     def get_state(self, entity_id: str) -> Optional[dict[str, Any]]:
         """Get the state of an entity from Home Assistant.
@@ -901,26 +901,30 @@ class HomeAssistant:
         if errors:
             raise HomeAssistantClientError(f"Failed to restore config for {len(errors)} entities:\n" + "\n".join(errors))
 
-    def _freeze_template_entity(self, entity_id: str) -> None:
-        """Freeze a template entity to prevent re-evaluation from overwriting state overrides.
+    def _freeze_entity(self, entity_id: str) -> None:
+        """Freeze an entity to prevent self-updating behavior from overwriting state overrides.
 
         Sends a WebSocket command to the ha_test_harness integration to add the entity
-        to the frozen set. The monkey-patched TemplateEntity._handle_results checks this
-        set and skips re-evaluation for frozen entities. Idempotent.
-        """
-        payload: dict[str, Any] = {"id": 1, "type": "ha_test_harness/template/freeze", "entity_id": entity_id}
-        response = self._ws_send_receive(payload)
-        if not response.get("success"):
-            raise HomeAssistantClientError(f"Failed to freeze template entity {entity_id}: {response}")
-        self._frozen_template_entities.add(entity_id)
+        to the frozen set. Supported entities:
+        - Template entities: monkey-patched TemplateEntity._handle_results skips re-evaluation
+        - sun.sun: monkey-patched Sun._async_write_ha_state skips writes, and scheduled
+          callbacks (update_sun_position, update_events) are cancelled
 
-    def _unfreeze_template_entity(self, entity_id: str) -> None:
-        """Unfreeze a template entity to restore normal template re-evaluation."""
-        payload: dict[str, Any] = {"id": 1, "type": "ha_test_harness/template/unfreeze", "entity_id": entity_id}
+        Idempotent.
+        """
+        payload: dict[str, Any] = {"id": 1, "type": "ha_test_harness/entity/freeze", "entity_id": entity_id}
         response = self._ws_send_receive(payload)
         if not response.get("success"):
-            raise HomeAssistantClientError(f"Failed to unfreeze template entity {entity_id}: {response}")
-        self._frozen_template_entities.discard(entity_id)
+            raise HomeAssistantClientError(f"Failed to freeze entity {entity_id}: {response}")
+        self._frozen_entities.add(entity_id)
+
+    def _unfreeze_entity(self, entity_id: str) -> None:
+        """Unfreeze an entity to restore normal self-updating behavior."""
+        payload: dict[str, Any] = {"id": 1, "type": "ha_test_harness/entity/unfreeze", "entity_id": entity_id}
+        response = self._ws_send_receive(payload)
+        if not response.get("success"):
+            raise HomeAssistantClientError(f"Failed to unfreeze entity {entity_id}: {response}")
+        self._frozen_entities.discard(entity_id)
 
     def restore(self, entity_id: str) -> None:
         """Restore an entity to its natural state by unfreezing it.
@@ -930,14 +934,16 @@ class HomeAssistant:
         when a test wants to override an entity's state temporarily and then let it
         return to normal operation within the same test.
 
+        If the entity is not currently frozen, this method is a no-op.
+
         Args:
             entity_id: The entity ID to restore (e.g., 'sun.sun' or 'sensor.template_sensor').
 
         Raises:
             HomeAssistantClientError: If the unfreeze operation fails.
         """
-        if entity_id in self._frozen_template_entities:
-            self._unfreeze_template_entity(entity_id)
+        if entity_id in self._frozen_entities:
+            self._unfreeze_entity(entity_id)
 
     def restore_entity_states(self) -> None:
         """Restore all entity states modified by set_state() to their original values.
@@ -948,16 +954,16 @@ class HomeAssistant:
         it is removed. Tracking is cleared regardless of success or failure to prevent
         state pollution across tests.
 
-        Frozen template entities are unfrozen before state restoration to allow normal
-        template re-evaluation to resume.
+        Frozen entities are unfrozen before state restoration to allow normal
+        self-updating behavior to resume.
 
         Raises:
             HomeAssistantClientError: If any state restoration fails.
         """
-        frozen_entities = list(self._frozen_template_entities)
-        self._frozen_template_entities.clear()
+        frozen_entities = list(self._frozen_entities)
+        self._frozen_entities.clear()
         for entity_id in frozen_entities:
-            self._unfreeze_template_entity(entity_id)
+            self._unfreeze_entity(entity_id)
 
         errors = []
 
