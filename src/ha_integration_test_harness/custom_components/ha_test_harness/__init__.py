@@ -178,12 +178,28 @@ def _apply_template_monkey_patch(hass: HomeAssistant) -> None:
     _LOGGER.info("[ha_test_harness] Monkey-patched TemplateEntity._handle_results for template freeze support")
 
 
-def _apply_sun_monkey_patch(hass: HomeAssistant) -> None:
-    """Monkey-patch the Sun entity's self-update callbacks to support freezing.
+def _get_sun_entity_instance(hass: HomeAssistant) -> Any:
+    """Find the Sun entity instance via config entries.
 
-    When sun.sun is in the frozen_entities set, the patched methods skip the
-    solar position recalculation entirely, preventing the Sun entity from
-    overwriting any state override set via set_state().
+    The Sun entity is stored as config_entry.runtime_data, not in hass.data["sun"].
+    Returns None if not found.
+    """
+    try:
+        for entry in hass.config_entries.async_entries("sun"):
+            runtime_data = getattr(entry, "runtime_data", None)
+            if runtime_data is not None:
+                return runtime_data
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
+def _apply_sun_monkey_patch(hass: HomeAssistant) -> None:
+    """Monkey-patch the Sun entity's state write methods to support freezing.
+
+    When sun.sun is in the frozen_entities set, the patched methods skip the state
+    write entirely, preventing the Sun entity from overwriting any state override
+    set via set_state().
 
     The Sun entity is a direct Entity subclass (not a TemplateEntity), so the
     template freeze mechanism does not protect it. It has two scheduled callbacks:
@@ -191,8 +207,12 @@ def _apply_sun_monkey_patch(hass: HomeAssistant) -> None:
       or ~5min (night)
     - update_events: recalculates solar event times at each solar event
 
-    Both are suppressed when sun.sun is frozen. Additionally, async_write_ha_state
-    is patched to prevent any state writes from the Sun entity while frozen.
+    These callbacks are cancelled when sun.sun is frozen (via the freeze handler),
+    and restored when unfrozen. The monkey-patch serves as a safety net to catch
+    any writes that slip through.
+
+    We patch both async_write_ha_state and _async_write_ha_state to ensure we
+    intercept all write paths.
     """
     try:
         from homeassistant.components.sun import Sun
@@ -200,31 +220,24 @@ def _apply_sun_monkey_patch(hass: HomeAssistant) -> None:
         _LOGGER.warning("[ha_test_harness] Could not import Sun; sun freeze not available")
         return
 
-    original_update_sun_position = Sun.update_sun_position
-    original_update_events = Sun.update_events
     original_async_write_ha_state = Sun.async_write_ha_state
-
-    @callback
-    def _patched_update_sun_position(self: Sun, now: Any = None) -> None:
-        if _SUN_ENTITY_ID in hass.data[DOMAIN]["frozen_entities"]:
-            return
-        original_update_sun_position(self, now)
-
-    @callback
-    def _patched_update_events(self: Sun, now: Any = None) -> None:
-        if _SUN_ENTITY_ID in hass.data[DOMAIN]["frozen_entities"]:
-            return
-        original_update_events(self, now)
+    original_async_write_ha_state_internal = Sun._async_write_ha_state
 
     def _patched_async_write_ha_state(self: Sun, *args: Any, **kwargs: Any) -> None:
-        if _SUN_ENTITY_ID in hass.data[DOMAIN]["frozen_entities"]:
+        frozen_set = hass.data[DOMAIN]["frozen_entities"]
+        if _SUN_ENTITY_ID in frozen_set:
             return
         original_async_write_ha_state(self, *args, **kwargs)
 
-    Sun.update_sun_position = _patched_update_sun_position  # type: ignore[method-assign]
-    Sun.update_events = _patched_update_events  # type: ignore[method-assign]
+    def _patched_async_write_ha_state_internal(self: Sun, *args: Any, **kwargs: Any) -> None:
+        frozen_set = hass.data[DOMAIN]["frozen_entities"]
+        if _SUN_ENTITY_ID in frozen_set:
+            return
+        original_async_write_ha_state_internal(self, *args, **kwargs)
+
     Sun.async_write_ha_state = _patched_async_write_ha_state  # type: ignore[method-assign,misc,assignment]
-    _LOGGER.info("[ha_test_harness] Monkey-patched Sun callbacks for sun freeze support")
+    Sun._async_write_ha_state = _patched_async_write_ha_state_internal  # type: ignore[method-assign,assignment]
+    _LOGGER.info("[ha_test_harness] Monkey-patched Sun async_write_ha_state methods for sun freeze support")
 
 
 def _get_time_offset(hass: HomeAssistant) -> timedelta:
@@ -375,6 +388,21 @@ def _advance_scheduled_timers(hass: HomeAssistant, delta_seconds: float) -> int:
         heapq.heapify(loop._scheduled)
 
     return advanced
+
+
+async def _settle_before_time_change(hass: HomeAssistant) -> None:
+    """Ensure all pending WebSocket commands are processed before advancing time.
+
+    This prevents a race condition where freeze/unfreeze commands from a previous
+    test's teardown might be processed asynchronously and interfere with the current
+    test's time advance. By settling before time changes, we ensure that all pending
+    state modifications are complete.
+    """
+    try:
+        async with asyncio.timeout(_SETTLE_TIMEOUT):
+            await hass.async_block_till_done()
+    except TimeoutError:
+        _LOGGER.debug("[ha_test_harness] Tasks still pending %ss before time change; proceeding anyway", _SETTLE_TIMEOUT)
 
 
 async def _settle_after_time_change(hass: HomeAssistant) -> None:
@@ -574,9 +602,25 @@ async def ws_freeze_template_entity(hass: HomeAssistant, connection: websocket_a
 
     Adds the entity to the frozen set, preventing TemplateEntity._handle_results
     from overwriting the state on template re-evaluation. Idempotent.
+
+    For sun.sun, also cancels the Sun entity's pending scheduled callbacks
+    (update_sun_position and update_events) to prevent them from mutating
+    instance attributes and writing state.
     """
     entity_id: str = msg["entity_id"]
     hass.data[DOMAIN]["frozen_entities"].add(entity_id)
+
+    if entity_id == _SUN_ENTITY_ID:
+        sun_entity = _get_sun_entity_instance(hass)
+        if sun_entity is not None:
+            if getattr(sun_entity, "_update_sun_position_listener", None):
+                sun_entity._update_sun_position_listener()
+                sun_entity._update_sun_position_listener = None
+            if getattr(sun_entity, "_update_events_listener", None):
+                sun_entity._update_events_listener()
+                sun_entity._update_events_listener = None
+            _LOGGER.info("[ha_test_harness] Cancelled Sun entity listeners for freeze")
+
     connection.send_result(msg["id"], {"entity_id": entity_id})
 
 
@@ -592,9 +636,19 @@ async def ws_unfreeze_template_entity(hass: HomeAssistant, connection: websocket
 
     Removes the entity from the frozen set, restoring normal template re-evaluation.
     Idempotent.
+
+    For sun.sun, also triggers update_location(initial=True) to recalculate solar
+    position from the current fake time and re-schedule the Sun entity's timers.
     """
     entity_id: str = msg["entity_id"]
     hass.data[DOMAIN]["frozen_entities"].discard(entity_id)
+
+    if entity_id == _SUN_ENTITY_ID:
+        sun_entity = _get_sun_entity_instance(hass)
+        if sun_entity is not None:
+            sun_entity.update_location(initial=True)
+            _LOGGER.info("[ha_test_harness] Restored Sun entity listeners after unfreeze")
+
     connection.send_result(msg["id"], {"entity_id": entity_id})
 
 
@@ -624,6 +678,8 @@ async def ws_time_set(hass: HomeAssistant, connection: websocket_api.ActiveConne
         connection.send_error(msg["id"], "invalid_timestamp", f"Invalid ISO 8601 timestamp: {timestamp_str!r}: {e}")
         return
 
+    await _settle_before_time_change(hass)
+
     previous_offset = _get_time_offset(hass)
     offset = target_dt - datetime.fromtimestamp(_real_time(), timezone.utc)
     _set_time_offset(hass, offset)
@@ -652,6 +708,8 @@ async def ws_time_advance(hass: HomeAssistant, connection: websocket_api.ActiveC
     """
     seconds: float = msg["seconds"]
     delta = timedelta(seconds=seconds)
+
+    await _settle_before_time_change(hass)
 
     current_offset = _get_time_offset(hass)
     new_offset = current_offset + delta
