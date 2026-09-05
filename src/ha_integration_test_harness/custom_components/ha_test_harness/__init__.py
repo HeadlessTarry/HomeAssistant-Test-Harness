@@ -52,6 +52,7 @@ DOMAIN = "ha_test_harness"
 SUPPORTED_DOMAINS = ["sensor", "binary_sensor", "switch", "light", "media_player", "select"]
 _PLATFORM_READY_TIMEOUT = 30  # seconds to wait for a platform callback to be registered
 _SETTLE_TIMEOUT = 2  # seconds to let a time change take effect before replying
+_SUN_ENTITY_ID = "sun.sun"
 
 # Captured before time.time is patched, so the offset has a real base.
 # This is the unpatched stdlib clock, used to compute the delta between real and fake time.
@@ -190,41 +191,31 @@ def _apply_sun_monkey_patch(hass: HomeAssistant) -> None:
       or ~5min (night)
     - update_events: recalculates solar event times at each solar event
 
-    Both are suppressed when sun.sun is frozen. Additionally, async_write_ha_state
-    is patched on the Entity base class to prevent any state writes from the Sun
-    entity while frozen (checking entity_id to only affect sun.sun).
+    Both are suppressed when sun.sun is frozen.
     """
     try:
         from homeassistant.components.sun import Sun
-        from homeassistant.helpers.entity import Entity
     except ImportError:
-        _LOGGER.warning("[ha_test_harness] Could not import Sun/Entity; sun freeze not available")
+        _LOGGER.warning("[ha_test_harness] Could not import Sun; sun freeze not available")
         return
 
     original_update_sun_position = Sun.update_sun_position
     original_update_events = Sun.update_events
-    original_async_write_ha_state = Entity.async_write_ha_state
 
     @callback
     def _patched_update_sun_position(self: Sun, now: Any = None) -> None:
-        if "sun.sun" in hass.data[DOMAIN]["frozen_entities"]:
+        if _SUN_ENTITY_ID in hass.data[DOMAIN]["frozen_entities"]:
             return
         original_update_sun_position(self, now)
 
     @callback
     def _patched_update_events(self: Sun, now: Any = None) -> None:
-        if "sun.sun" in hass.data[DOMAIN]["frozen_entities"]:
+        if _SUN_ENTITY_ID in hass.data[DOMAIN]["frozen_entities"]:
             return
         original_update_events(self, now)
 
-    def _patched_async_write_ha_state(self: Entity, *args: Any, **kwargs: Any) -> None:
-        if self.entity_id == "sun.sun" and "sun.sun" in hass.data[DOMAIN]["frozen_entities"]:
-            return
-        original_async_write_ha_state(self, *args, **kwargs)
-
     Sun.update_sun_position = _patched_update_sun_position  # type: ignore[method-assign]
     Sun.update_events = _patched_update_events  # type: ignore[method-assign]
-    Entity.async_write_ha_state = _patched_async_write_ha_state  # type: ignore[method-assign,misc]
     _LOGGER.info("[ha_test_harness] Monkey-patched Sun callbacks for sun freeze support")
 
 

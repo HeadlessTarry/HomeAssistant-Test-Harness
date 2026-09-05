@@ -4,8 +4,9 @@ When set_state() is called on sun.sun, the harness automatically freezes the ent
 to prevent the Sun's self-updating callbacks (update_sun_position, update_events)
 from overwriting the override. This is transparent to the caller.
 
-Scenario covered:
+Scenarios covered:
 1. Overriding sun.sun state persists immediately after set_state()
+2. Overriding sun.sun state with attributes persists immediately
 """
 
 from ha_integration_test_harness import HomeAssistant
