@@ -1,7 +1,7 @@
 ---
 services:
   homeassistant:
-    image: homeassistant/home-assistant:stable
+    image: ${HA_IMAGE:-homeassistant/home-assistant:stable}
     # No fixed container name - allows parallel instances
     ports:
       - "8123"  # Ephemeral port mapping - Docker assigns random host port

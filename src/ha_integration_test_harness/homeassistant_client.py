@@ -10,6 +10,7 @@ from urllib.parse import urlparse, urlunparse
 import requests
 import websocket
 
+from .entity_builder import EntityBuilder
 from .exceptions import HomeAssistantClientError, HomeAssistantTimeoutError
 
 logger = logging.getLogger(__name__)
@@ -46,7 +47,7 @@ class HomeAssistant:
         self._created_entities: set[str] = set()
         self._entity_original_config: dict[str, dict[str, Any]] = {}
         self._entity_original_state: dict[str, Optional[dict[str, Any]]] = {}
-        self._frozen_template_entities: set[str] = set()
+        self._frozen_entities: set[str] = set()
         self._known_area_ids: Optional[set[str]] = None
         self._known_label_ids: Optional[set[str]] = None
         self._is_unresponsive: bool = False
@@ -87,7 +88,7 @@ class HomeAssistant:
 
         Otherwise, the state is injected directly via the REST API (``POST /api/states``).
         REST-injected entities are written only to the HA state machine — they are **not**
-        registered in the entity registry and cannot be used with ``given_entity_has()``.
+        registered in the entity registry and cannot be used with area/label assignment.
 
         Before the first ``set_state()`` call per entity per test, the current state is
         snapshot and will be automatically restored after the test completes. If the entity
@@ -145,7 +146,7 @@ class HomeAssistant:
             self._handle_http_error(e, "POST", url)
 
         if _freeze:
-            self._freeze_template_entity(entity_id)
+            self._freeze_entity(entity_id)
 
     def get_state(self, entity_id: str) -> Optional[dict[str, Any]]:
         """Get the state of an entity from Home Assistant.
@@ -557,13 +558,13 @@ class HomeAssistant:
             time.sleep(interval)
             interval = min(interval * 2, _HEALTH_CHECK_MAX_INTERVAL)
 
-    def given_an_entity(self, entity_id: str, state: str, attributes: Optional[dict[str, Any]] = None) -> None:
+    def given_an_entity(self, entity_id: str, state: str) -> EntityBuilder:
         """Create a fully-registered entity for testing purposes with automatic cleanup.
 
         Creates the entity via the bundled ``ha_test_harness`` custom integration using
         a WebSocket command. The entity is registered in the HA entity registry (it has a
-        ``unique_id``), appears in the HA UI, and supports area/label assignment via
-        ``given_entity_has()``. Supported domains: ``sensor``, ``binary_sensor``,
+        ``unique_id``), appears in the HA UI, and supports area/label assignment via the
+        returned builder. Supported domains: ``sensor``, ``binary_sensor``,
         ``switch``, ``light``, ``media_player``, ``select``.
 
         If called a second time with the same ``entity_id``, the existing entity's state
@@ -574,7 +575,9 @@ class HomeAssistant:
             entity_id: The entity ID to create (e.g., 'sensor.test_temp'). The domain prefix
                 must be one of the supported domains listed above.
             state: The initial state value for the entity.
-            attributes: Optional dictionary of attributes to set for the entity.
+
+        Returns:
+            An EntityBuilder instance for fluent configuration of the entity.
 
         Raises:
             HomeAssistantClientError: If the entity could not be created, or if the domain
@@ -582,12 +585,10 @@ class HomeAssistant:
         """
         if entity_id in self._created_entities:
             # Entity already exists — update its state in place.
-            self.set_state(entity_id, state, attributes)
-            return
+            self.set_state(entity_id, state)
+            return EntityBuilder(self, entity_id)
 
         payload: dict[str, Any] = {"id": 1, "type": "ha_test_harness/entity/create", "entity_id": entity_id, "state": state}
-        if attributes is not None:
-            payload["attributes"] = attributes
         # Use a generous timeout: the server-side handler waits up to 30s for the platform to be
         # ready (e.g. on the very first entity creation after HA starts), so the socket timeout must
         # exceed that to avoid a spurious WebSocket timeout error.
@@ -595,6 +596,7 @@ class HomeAssistant:
         if not response.get("success"):
             raise HomeAssistantClientError(f"Failed to create entity {entity_id} via ha_test_harness: {response}")
         self._created_entities.add(entity_id)
+        return EntityBuilder(self, entity_id)
 
     def _ws_send_receive(self, payload: dict[str, Any], timeout: int = 10) -> dict[str, Any]:
         """Authenticate over the WebSocket API and send a single command, returning the response.
@@ -603,7 +605,7 @@ class HomeAssistant:
         handshake, sends ``payload``, and returns the result message.
 
         Note: A new TCP connection and auth exchange is opened per call. Operations like
-        ``given_an_entity()`` followed by ``given_entity_has()`` in the same test will each
+        ``given_an_entity()`` followed by area/label assignment in the same test will each
         open their own connection. This is acceptable for a test harness, but if suite startup
         latency becomes a concern, consider introducing a persistent/reusable connection.
 
@@ -774,13 +776,57 @@ class HomeAssistant:
                     raise HomeAssistantClientError(f"Failed to create label '{label_id}': {create_response}")
                 self._known_label_ids.add(label_id)
 
-    def given_entity_has(
+    def _track_entity_config_for_rollback(self, entity_id: str) -> None:
+        """Save the entity's current area and labels for rollback if not already saved.
+
+        Called by EntityBuilder before the first area/label change to ensure the pre-test
+        configuration can be restored. If called multiple times for the same entity_id,
+        only the first call saves the config (preserving the original state).
+
+        Args:
+            entity_id: The entity ID to track for rollback.
+        """
+        if entity_id not in self._entity_original_config:
+            self._entity_original_config[entity_id] = self._get_entity_config(entity_id)
+
+    def _set_entity_area(self, entity_id: str, area: str) -> None:
+        """Assign an area to an entity, creating the area if it doesn't exist.
+
+        Args:
+            entity_id: The entity ID to update.
+            area: The area ID to assign.
+
+        Raises:
+            HomeAssistantClientError: If the area cannot be created or the entity registry
+                cannot be updated.
+        """
+        self._ensure_area_exists(area)
+        self._update_entity_registry(entity_id, area=area)
+
+    def _set_entity_labels(self, entity_id: str, labels: list[str]) -> None:
+        """Assign labels to an entity, creating any labels that don't exist.
+
+        Args:
+            entity_id: The entity ID to update.
+            labels: The list of label IDs to assign.
+
+        Raises:
+            HomeAssistantClientError: If the labels cannot be created or the entity registry
+                cannot be updated.
+        """
+        self._ensure_labels_exist(labels)
+        self._update_entity_registry(entity_id, labels=labels)
+
+    def _given_entity_has(
         self,
         entity_id: str,
         area: Optional[str] = _UNSET,
         labels: Optional[list[str]] = _UNSET,
     ) -> None:
         """Assign an area and/or labels to an entity for testing purposes, with automatic rollback.
+
+        Internal method retained for rollback operations. Use the EntityBuilder API
+        (``given_an_entity().in_area()`` and ``.with_labels()``) instead.
 
         Saves the entity's current area and labels before any modification so they can be
         restored at the end of the test by ``restore_entity_config()``. If called multiple
@@ -810,46 +856,24 @@ class HomeAssistant:
             ValueError: If neither ``area`` nor ``labels`` is provided.
             HomeAssistantClientError: If the entity registry cannot be read or updated, or
                 if creating a missing area or label fails.
-
-        Examples:
-            Set area only::
-
-                home_assistant.given_entity_has("light.living_room", area="living_room")
-
-            Set labels only::
-
-                home_assistant.given_entity_has("light.living_room", labels=["night_mode"])
-
-            Set both area and labels::
-
-                home_assistant.given_entity_has("light.living_room", area="living_room", labels=["night_mode"])
-
-            Remove area assignment::
-
-                home_assistant.given_entity_has("light.living_room", area=None)
-
-            Remove all labels::
-
-                home_assistant.given_entity_has("light.living_room", labels=None)
         """
         if area is _UNSET and labels is _UNSET:
             raise ValueError("At least one of 'area' or 'labels' must be explicitly provided")
+
+        self._track_entity_config_for_rollback(entity_id)
 
         if area is not _UNSET and area is not None:
             self._ensure_area_exists(area)
         if labels is not _UNSET and labels is not None:
             self._ensure_labels_exist(labels)
 
-        if entity_id not in self._entity_original_config:
-            self._entity_original_config[entity_id] = self._get_entity_config(entity_id)
-
         self._update_entity_registry(entity_id, area=area, labels=labels)
 
     def restore_entity_config(self) -> None:
-        """Restore all entity labels and areas modified by given_entity_has() to their original values.
+        """Restore all entity labels and areas modified by _given_entity_has() to their original values.
 
         This method is called automatically after each test function completes.
-        It restores both labels and area for all entities modified via ``given_entity_has()``.
+        It restores both labels and area for all entities modified via ``_given_entity_has()``.
         Successfully restored entities are cleared from tracking immediately, while
         failed restorations remain tracked.
 
@@ -861,12 +885,12 @@ class HomeAssistant:
 
         for entity_id, original_config in list(self._entity_original_config.items()):
             try:
-                # Re-entering given_entity_has() here is safe: the snapshot guard
+                # Re-entering _given_entity_has() here is safe: the snapshot guard
                 # ("if entity_id not in self._entity_original_config") is still False
                 # for each entity_id because we have not yet deleted entries from
                 # _entity_original_config (that happens in the loop below, only after
                 # success).  So the pre-test config is not overwritten by the restore call.
-                self.given_entity_has(entity_id, area=original_config["area_id"], labels=original_config["labels"])
+                self._given_entity_has(entity_id, area=original_config["area_id"], labels=original_config["labels"])
                 successfully_restored.append(entity_id)
             except HomeAssistantClientError as e:
                 errors.append(str(e))
@@ -877,26 +901,49 @@ class HomeAssistant:
         if errors:
             raise HomeAssistantClientError(f"Failed to restore config for {len(errors)} entities:\n" + "\n".join(errors))
 
-    def _freeze_template_entity(self, entity_id: str) -> None:
-        """Freeze a template entity to prevent re-evaluation from overwriting state overrides.
+    def _freeze_entity(self, entity_id: str) -> None:
+        """Freeze an entity to prevent self-updating behavior from overwriting state overrides.
 
         Sends a WebSocket command to the ha_test_harness integration to add the entity
-        to the frozen set. The monkey-patched TemplateEntity._handle_results checks this
-        set and skips re-evaluation for frozen entities. Idempotent.
-        """
-        payload: dict[str, Any] = {"id": 1, "type": "ha_test_harness/template/freeze", "entity_id": entity_id}
-        response = self._ws_send_receive(payload)
-        if not response.get("success"):
-            raise HomeAssistantClientError(f"Failed to freeze template entity {entity_id}: {response}")
-        self._frozen_template_entities.add(entity_id)
+        to the frozen set. Supported entities:
+        - Template entities: monkey-patched TemplateEntity._handle_results skips re-evaluation
+        - sun.sun: monkey-patched Sun._async_write_ha_state skips writes, and scheduled
+          callbacks (update_sun_position, update_events) are cancelled
 
-    def _unfreeze_template_entity(self, entity_id: str) -> None:
-        """Unfreeze a template entity to restore normal template re-evaluation."""
-        payload: dict[str, Any] = {"id": 1, "type": "ha_test_harness/template/unfreeze", "entity_id": entity_id}
+        Idempotent.
+        """
+        payload: dict[str, Any] = {"id": 1, "type": "ha_test_harness/entity/freeze", "entity_id": entity_id}
         response = self._ws_send_receive(payload)
         if not response.get("success"):
-            raise HomeAssistantClientError(f"Failed to unfreeze template entity {entity_id}: {response}")
-        self._frozen_template_entities.discard(entity_id)
+            raise HomeAssistantClientError(f"Failed to freeze entity {entity_id}: {response}")
+        self._frozen_entities.add(entity_id)
+
+    def _unfreeze_entity(self, entity_id: str) -> None:
+        """Unfreeze an entity to restore normal self-updating behavior."""
+        payload: dict[str, Any] = {"id": 1, "type": "ha_test_harness/entity/unfreeze", "entity_id": entity_id}
+        response = self._ws_send_receive(payload)
+        if not response.get("success"):
+            raise HomeAssistantClientError(f"Failed to unfreeze entity {entity_id}: {response}")
+        self._frozen_entities.discard(entity_id)
+
+    def restore(self, entity_id: str) -> None:
+        """Restore an entity to its natural state by unfreezing it.
+
+        Unfreezes a previously frozen entity (template entity or sun.sun), allowing
+        it to resume normal re-evaluation or self-updating behavior. This is useful
+        when a test wants to override an entity's state temporarily and then let it
+        return to normal operation within the same test.
+
+        If the entity is not currently frozen, this method is a no-op.
+
+        Args:
+            entity_id: The entity ID to restore (e.g., 'sun.sun' or 'sensor.template_sensor').
+
+        Raises:
+            HomeAssistantClientError: If the unfreeze operation fails.
+        """
+        if entity_id in self._frozen_entities:
+            self._unfreeze_entity(entity_id)
 
     def restore_entity_states(self) -> None:
         """Restore all entity states modified by set_state() to their original values.
@@ -907,16 +954,16 @@ class HomeAssistant:
         it is removed. Tracking is cleared regardless of success or failure to prevent
         state pollution across tests.
 
-        Frozen template entities are unfrozen before state restoration to allow normal
-        template re-evaluation to resume.
+        Frozen entities are unfrozen before state restoration to allow normal
+        self-updating behavior to resume.
 
         Raises:
             HomeAssistantClientError: If any state restoration fails.
         """
-        frozen_entities = list(self._frozen_template_entities)
-        self._frozen_template_entities.clear()
+        frozen_entities = list(self._frozen_entities)
+        self._frozen_entities.clear()
         for entity_id in frozen_entities:
-            self._unfreeze_template_entity(entity_id)
+            self._unfreeze_entity(entity_id)
 
         errors = []
 

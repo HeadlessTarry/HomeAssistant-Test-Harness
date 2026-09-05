@@ -52,6 +52,7 @@ DOMAIN = "ha_test_harness"
 SUPPORTED_DOMAINS = ["sensor", "binary_sensor", "switch", "light", "media_player", "select"]
 _PLATFORM_READY_TIMEOUT = 30  # seconds to wait for a platform callback to be registered
 _SETTLE_TIMEOUT = 2  # seconds to let a time change take effect before replying
+_SUN_ENTITY_ID = "sun.sun"
 
 # Captured before time.time is patched, so the offset has a real base.
 # This is the unpatched stdlib clock, used to compute the delta between real and fake time.
@@ -111,12 +112,13 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
     _apply_template_monkey_patch(hass)
     _apply_time_monkey_patch(hass)
+    _apply_sun_monkey_patch(hass)
 
     websocket_api.async_register_command(hass, ws_create_entity)
     websocket_api.async_register_command(hass, ws_set_entity_state)
     websocket_api.async_register_command(hass, ws_delete_entity)
-    websocket_api.async_register_command(hass, ws_freeze_template_entity)
-    websocket_api.async_register_command(hass, ws_unfreeze_template_entity)
+    websocket_api.async_register_command(hass, ws_freeze_entity)
+    websocket_api.async_register_command(hass, ws_unfreeze_entity)
     websocket_api.async_register_command(hass, ws_time_set)
     websocket_api.async_register_command(hass, ws_time_advance)
     websocket_api.async_register_command(hass, ws_time_get)
@@ -174,6 +176,92 @@ def _apply_template_monkey_patch(hass: HomeAssistant) -> None:
 
     TemplateEntity._handle_results = _patched_handle_results  # type: ignore[method-assign]
     _LOGGER.info("[ha_test_harness] Monkey-patched TemplateEntity._handle_results for template freeze support")
+
+
+def _get_sun_entity_instance(hass: HomeAssistant) -> Any:
+    """Find the Sun entity instance via config entries.
+
+    The Sun entity is stored as config_entry.runtime_data, not in hass.data["sun"].
+    Returns None if not found.
+    """
+    try:
+        for entry in hass.config_entries.async_entries("sun"):
+            runtime_data = getattr(entry, "runtime_data", None)
+            if runtime_data is not None:
+                return runtime_data
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
+def _apply_sun_monkey_patch(hass: HomeAssistant) -> None:
+    """Monkey-patch the Sun entity's state write method to support freezing.
+
+    When sun.sun is in the frozen_entities set, the patched method skips the state
+    write entirely, preventing the Sun entity from overwriting any state override
+    set via set_state().
+
+    The Sun entity is a direct Entity subclass (not a TemplateEntity), so the
+    template freeze mechanism does not protect it. It has two scheduled callbacks:
+    - update_sun_position: recalculates elevation/azimuth every ~30s (day/twilight)
+      or ~5min (night)
+    - update_events: recalculates solar event times at each solar event
+
+    These callbacks are cancelled when sun.sun is frozen (via the freeze handler),
+    and restored when unfrozen. The monkey-patch serves as a safety net to catch
+    any writes that slip through.
+
+    We patch _async_write_ha_state (not async_write_ha_state) because the latter
+    is marked @final and just delegates to _async_write_ha_state after validation.
+    All actual state writes funnel through _async_write_ha_state.
+    """
+    try:
+        from homeassistant.components.sun import Sun
+    except ImportError:
+        _LOGGER.warning("[ha_test_harness] Could not import Sun; sun freeze not available")
+        return
+
+    original_async_write_ha_state = Sun._async_write_ha_state
+
+    def _patched_async_write_ha_state(self: Sun, *args: Any, **kwargs: Any) -> None:
+        frozen_set = hass.data[DOMAIN]["frozen_entities"]
+        if _SUN_ENTITY_ID in frozen_set:
+            return
+        original_async_write_ha_state(self, *args, **kwargs)
+
+    Sun._async_write_ha_state = _patched_async_write_ha_state  # type: ignore[method-assign,assignment]
+    _LOGGER.info("[ha_test_harness] Monkey-patched Sun._async_write_ha_state for sun freeze support")
+
+
+def _freeze_sun(hass: HomeAssistant) -> None:
+    """Cancel the Sun entity's pending scheduled callbacks.
+
+    Cancels update_sun_position and update_events listeners to prevent them from
+    mutating instance attributes and writing state while sun.sun is frozen.
+    """
+    sun_entity = _get_sun_entity_instance(hass)
+    if sun_entity is None:
+        return
+    if getattr(sun_entity, "_update_sun_position_listener", None):
+        sun_entity._update_sun_position_listener()
+        sun_entity._update_sun_position_listener = None
+    if getattr(sun_entity, "_update_events_listener", None):
+        sun_entity._update_events_listener()
+        sun_entity._update_events_listener = None
+    _LOGGER.info("[ha_test_harness] Cancelled Sun entity listeners for freeze")
+
+
+def _unfreeze_sun(hass: HomeAssistant) -> None:
+    """Restore the Sun entity's scheduled callbacks.
+
+    Triggers update_location(initial=True) to recalculate solar position from the
+    current fake time and re-schedule the Sun entity's timers.
+    """
+    sun_entity = _get_sun_entity_instance(hass)
+    if sun_entity is None:
+        return
+    sun_entity.update_location(initial=True)
+    _LOGGER.info("[ha_test_harness] Restored Sun entity listeners after unfreeze")
 
 
 def _get_time_offset(hass: HomeAssistant) -> timedelta:
@@ -513,37 +601,50 @@ async def ws_delete_entity(hass: HomeAssistant, connection: websocket_api.Active
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "ha_test_harness/template/freeze",
+        vol.Required("type"): "ha_test_harness/entity/freeze",
         vol.Required("entity_id"): str,
     }
 )
 @websocket_api.async_response
-async def ws_freeze_template_entity(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
-    """Handle ha_test_harness/template/freeze WebSocket command.
+async def ws_freeze_entity(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    """Handle ha_test_harness/entity/freeze WebSocket command.
 
-    Adds the entity to the frozen set, preventing TemplateEntity._handle_results
-    from overwriting the state on template re-evaluation. Idempotent.
+    Adds the entity to the frozen set, preventing self-updating behavior from
+    overwriting state overrides. Supported entities:
+    - Template entities: TemplateEntity._handle_results skips re-evaluation
+    - sun.sun: Sun._async_write_ha_state skips writes, and scheduled callbacks
+      (update_sun_position, update_events) are cancelled
+
+    Idempotent.
     """
     entity_id: str = msg["entity_id"]
     hass.data[DOMAIN]["frozen_entities"].add(entity_id)
+
+    if entity_id == _SUN_ENTITY_ID:
+        _freeze_sun(hass)
+
     connection.send_result(msg["id"], {"entity_id": entity_id})
 
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "ha_test_harness/template/unfreeze",
+        vol.Required("type"): "ha_test_harness/entity/unfreeze",
         vol.Required("entity_id"): str,
     }
 )
 @websocket_api.async_response
-async def ws_unfreeze_template_entity(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
-    """Handle ha_test_harness/template/unfreeze WebSocket command.
+async def ws_unfreeze_entity(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    """Handle ha_test_harness/entity/unfreeze WebSocket command.
 
-    Removes the entity from the frozen set, restoring normal template re-evaluation.
+    Removes the entity from the frozen set, restoring normal self-updating behavior.
     Idempotent.
     """
     entity_id: str = msg["entity_id"]
     hass.data[DOMAIN]["frozen_entities"].discard(entity_id)
+
+    if entity_id == _SUN_ENTITY_ID:
+        _unfreeze_sun(hass)
+
     connection.send_result(msg["id"], {"entity_id": entity_id})
 
 

@@ -85,7 +85,7 @@ class DockerComposeManager:
     Docker assigns ephemeral ports automatically to enable parallel test runs.
     """
 
-    def __init__(self, persistent_entities_path: Optional[str] = None) -> None:
+    def __init__(self, persistent_entities_path: Optional[str] = None, ha_image: Optional[str] = None) -> None:
         """Initialize the Docker Compose manager.
 
         Sets up paths and generates a unique run ID for container isolation.
@@ -94,12 +94,16 @@ class DockerComposeManager:
         Args:
             persistent_entities_path: Optional path to a YAML file containing persistent
                 Home Assistant entity definitions to be registered during container startup.
+            ha_image: Optional Docker image to use for Home Assistant (e.g.,
+                "homeassistant/home-assistant:2026.7"). If not provided, defaults to
+                the image specified in docker-compose.yaml (typically stable).
 
         Raises:
             DockerError: If configuration.yaml is not found in the detected Home Assistant root directory.
             PersistentEntityError: If persistent entities file is invalid or cannot be processed.
         """
         self._run_id = uuid.uuid4().hex
+        self._ha_image = ha_image
 
         # Detect Home Assistant configuration root
         self._ha_config_root = self._detect_ha_config_root()
@@ -601,6 +605,8 @@ class DockerComposeManager:
             env = os.environ.copy()
             env["HA_CONFIG_ROOT"] = str(config_root)
             env["APPDAEMON_CONFIG_ROOT"] = str(self._appdaemon_config_root)
+            if self._ha_image:
+                env["HA_IMAGE"] = self._ha_image
 
             subprocess.run(
                 ["docker", "compose", "-p", self._run_id, "up", "-d", "--wait"],

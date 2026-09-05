@@ -140,7 +140,7 @@ class TestLightFeatures:
     def test_light_turn_on_with_effect(self, home_assistant: HomeAssistant) -> None:
         """Test that light.turn_on with effect sets the attribute."""
         light_entity = "light.test_effect"
-        home_assistant.given_an_entity(light_entity, state="off", attributes={"effect_list": ["colorloop", "random"]})
+        home_assistant.given_an_entity(light_entity, state="off").with_attributes({"effect_list": ["colorloop", "random"]})
 
         home_assistant.call_action("light", "turn_on", {"entity_id": light_entity, "effect": "colorloop"})
 

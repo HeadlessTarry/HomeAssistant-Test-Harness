@@ -26,6 +26,7 @@ Pytest Fixtures (auto-registered):
 
 from .appdaemon_client import AppDaemon
 from .docker_manager import DockerComposeManager, DockerContainer
+from .entity_builder import EntityBuilder
 from .exceptions import (
     AppDaemonClientError,
     DockerError,
@@ -51,6 +52,7 @@ __all__ = [
     "DockerComposeManager",
     "DockerContainer",
     "DockerError",
+    "EntityBuilder",
     "HomeAssistant",
     "HomeAssistantClientError",
     "HomeAssistantTimeoutError",

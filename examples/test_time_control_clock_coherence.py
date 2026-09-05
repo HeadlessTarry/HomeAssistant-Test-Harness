@@ -63,8 +63,7 @@ class TestStateTimestampsFollowFakeTime:
         before now(). Toggling the light restarts that window, so after a further two
         fake hours it has only been on for two and must stay on.
         """
-        home_assistant.given_an_entity(self.light, "off")
-        home_assistant.given_entity_has(self.light, labels=["clock_coherence_auto_off"])
+        home_assistant.given_an_entity(self.light, "off").with_labels(["clock_coherence_auto_off"])
 
         home_assistant.call_action("homeassistant", "turn_on", {"entity_id": self.light})
         time_machine.fast_forward(timedelta(hours=2))
@@ -77,8 +76,7 @@ class TestStateTimestampsFollowFakeTime:
 
     def test_the_same_automation_still_fires_once_the_window_is_exceeded(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
         """The counterpart to the test above: it must still fire when it should."""
-        home_assistant.given_an_entity(self.light, "off")
-        home_assistant.given_entity_has(self.light, labels=["clock_coherence_auto_off"])
+        home_assistant.given_an_entity(self.light, "off").with_labels(["clock_coherence_auto_off"])
 
         home_assistant.call_action("homeassistant", "turn_on", {"entity_id": self.light})
         time_machine.fast_forward(timedelta(hours=3, seconds=15))
@@ -139,8 +137,7 @@ class TestRepeatedAdvancesDoNotFireEarly:
     def test_stepping_through_the_window_fires_the_automation_exactly_once(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
         """The light holds 'on' for every step under 3h, then turns off crossing it."""
         light = "light.clock_coherence_stepped_light"
-        home_assistant.given_an_entity(light, "off")
-        home_assistant.given_entity_has(light, labels=["clock_coherence_auto_off"])
+        home_assistant.given_an_entity(light, "off").with_labels(["clock_coherence_auto_off"])
 
         home_assistant.call_action("homeassistant", "turn_on", {"entity_id": light})
 
