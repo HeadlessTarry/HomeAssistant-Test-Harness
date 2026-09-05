@@ -195,9 +195,9 @@ def _get_sun_entity_instance(hass: HomeAssistant) -> Any:
 
 
 def _apply_sun_monkey_patch(hass: HomeAssistant) -> None:
-    """Monkey-patch the Sun entity's state write methods to support freezing.
+    """Monkey-patch the Sun entity's state write method to support freezing.
 
-    When sun.sun is in the frozen_entities set, the patched methods skip the state
+    When sun.sun is in the frozen_entities set, the patched method skips the state
     write entirely, preventing the Sun entity from overwriting any state override
     set via set_state().
 
@@ -211,8 +211,9 @@ def _apply_sun_monkey_patch(hass: HomeAssistant) -> None:
     and restored when unfrozen. The monkey-patch serves as a safety net to catch
     any writes that slip through.
 
-    We patch both async_write_ha_state and _async_write_ha_state to ensure we
-    intercept all write paths.
+    We patch _async_write_ha_state (not async_write_ha_state) because the latter
+    is marked @final and just delegates to _async_write_ha_state after validation.
+    All actual state writes funnel through _async_write_ha_state.
     """
     try:
         from homeassistant.components.sun import Sun
@@ -220,8 +221,7 @@ def _apply_sun_monkey_patch(hass: HomeAssistant) -> None:
         _LOGGER.warning("[ha_test_harness] Could not import Sun; sun freeze not available")
         return
 
-    original_async_write_ha_state = Sun.async_write_ha_state
-    original_async_write_ha_state_internal = Sun._async_write_ha_state
+    original_async_write_ha_state = Sun._async_write_ha_state
 
     def _patched_async_write_ha_state(self: Sun, *args: Any, **kwargs: Any) -> None:
         frozen_set = hass.data[DOMAIN]["frozen_entities"]
@@ -229,15 +229,8 @@ def _apply_sun_monkey_patch(hass: HomeAssistant) -> None:
             return
         original_async_write_ha_state(self, *args, **kwargs)
 
-    def _patched_async_write_ha_state_internal(self: Sun, *args: Any, **kwargs: Any) -> None:
-        frozen_set = hass.data[DOMAIN]["frozen_entities"]
-        if _SUN_ENTITY_ID in frozen_set:
-            return
-        original_async_write_ha_state_internal(self, *args, **kwargs)
-
-    Sun.async_write_ha_state = _patched_async_write_ha_state  # type: ignore[method-assign,misc,assignment]
-    Sun._async_write_ha_state = _patched_async_write_ha_state_internal  # type: ignore[method-assign,assignment]
-    _LOGGER.info("[ha_test_harness] Monkey-patched Sun async_write_ha_state methods for sun freeze support")
+    Sun._async_write_ha_state = _patched_async_write_ha_state  # type: ignore[method-assign,assignment]
+    _LOGGER.info("[ha_test_harness] Monkey-patched Sun._async_write_ha_state for sun freeze support")
 
 
 def _get_time_offset(hass: HomeAssistant) -> timedelta:
