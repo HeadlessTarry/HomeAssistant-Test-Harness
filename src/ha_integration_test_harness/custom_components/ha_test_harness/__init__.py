@@ -111,6 +111,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
     _apply_template_monkey_patch(hass)
     _apply_time_monkey_patch(hass)
+    _apply_sun_monkey_patch(hass)
 
     websocket_api.async_register_command(hass, ws_create_entity)
     websocket_api.async_register_command(hass, ws_set_entity_state)
@@ -174,6 +175,57 @@ def _apply_template_monkey_patch(hass: HomeAssistant) -> None:
 
     TemplateEntity._handle_results = _patched_handle_results  # type: ignore[method-assign]
     _LOGGER.info("[ha_test_harness] Monkey-patched TemplateEntity._handle_results for template freeze support")
+
+
+def _apply_sun_monkey_patch(hass: HomeAssistant) -> None:
+    """Monkey-patch the Sun entity's self-update callbacks to support freezing.
+
+    When sun.sun is in the frozen_entities set, the patched methods skip the
+    solar position recalculation entirely, preventing the Sun entity from
+    overwriting any state override set via set_state().
+
+    The Sun entity is a direct Entity subclass (not a TemplateEntity), so the
+    template freeze mechanism does not protect it. It has two scheduled callbacks:
+    - update_sun_position: recalculates elevation/azimuth every ~30s (day/twilight)
+      or ~5min (night)
+    - update_events: recalculates solar event times at each solar event
+
+    Both are suppressed when sun.sun is frozen. Additionally, async_write_ha_state
+    is patched on the Entity base class to prevent any state writes from the Sun
+    entity while frozen (checking entity_id to only affect sun.sun).
+    """
+    try:
+        from homeassistant.components.sun import Sun
+        from homeassistant.helpers.entity import Entity
+    except ImportError:
+        _LOGGER.warning("[ha_test_harness] Could not import Sun/Entity; sun freeze not available")
+        return
+
+    original_update_sun_position = Sun.update_sun_position
+    original_update_events = Sun.update_events
+    original_async_write_ha_state = Entity.async_write_ha_state
+
+    @callback
+    def _patched_update_sun_position(self: Sun, now: Any = None) -> None:
+        if "sun.sun" in hass.data[DOMAIN]["frozen_entities"]:
+            return
+        original_update_sun_position(self, now)
+
+    @callback
+    def _patched_update_events(self: Sun, now: Any = None) -> None:
+        if "sun.sun" in hass.data[DOMAIN]["frozen_entities"]:
+            return
+        original_update_events(self, now)
+
+    def _patched_async_write_ha_state(self: Entity, *args: Any, **kwargs: Any) -> None:
+        if self.entity_id == "sun.sun" and "sun.sun" in hass.data[DOMAIN]["frozen_entities"]:
+            return
+        original_async_write_ha_state(self, *args, **kwargs)
+
+    Sun.update_sun_position = _patched_update_sun_position  # type: ignore[method-assign]
+    Sun.update_events = _patched_update_events  # type: ignore[method-assign]
+    Entity.async_write_ha_state = _patched_async_write_ha_state  # type: ignore[method-assign,misc]
+    _LOGGER.info("[ha_test_harness] Monkey-patched Sun callbacks for sun freeze support")
 
 
 def _get_time_offset(hass: HomeAssistant) -> timedelta:
