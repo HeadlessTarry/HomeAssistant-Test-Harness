@@ -922,6 +922,23 @@ class HomeAssistant:
             raise HomeAssistantClientError(f"Failed to unfreeze template entity {entity_id}: {response}")
         self._frozen_template_entities.discard(entity_id)
 
+    def restore(self, entity_id: str) -> None:
+        """Restore an entity to its natural state by unfreezing it.
+
+        Unfreezes a previously frozen entity (template entity or sun.sun), allowing
+        it to resume normal re-evaluation or self-updating behavior. This is useful
+        when a test wants to override an entity's state temporarily and then let it
+        return to normal operation within the same test.
+
+        Args:
+            entity_id: The entity ID to restore (e.g., 'sun.sun' or 'sensor.template_sensor').
+
+        Raises:
+            HomeAssistantClientError: If the unfreeze operation fails.
+        """
+        if entity_id in self._frozen_template_entities:
+            self._unfreeze_template_entity(entity_id)
+
     def restore_entity_states(self) -> None:
         """Restore all entity states modified by set_state() to their original values.
 

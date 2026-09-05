@@ -191,7 +191,8 @@ def _apply_sun_monkey_patch(hass: HomeAssistant) -> None:
       or ~5min (night)
     - update_events: recalculates solar event times at each solar event
 
-    Both are suppressed when sun.sun is frozen.
+    Both are suppressed when sun.sun is frozen. Additionally, async_write_ha_state
+    is patched to prevent any state writes from the Sun entity while frozen.
     """
     try:
         from homeassistant.components.sun import Sun
@@ -201,6 +202,7 @@ def _apply_sun_monkey_patch(hass: HomeAssistant) -> None:
 
     original_update_sun_position = Sun.update_sun_position
     original_update_events = Sun.update_events
+    original_async_write_ha_state = Sun.async_write_ha_state
 
     @callback
     def _patched_update_sun_position(self: Sun, now: Any = None) -> None:
@@ -214,8 +216,14 @@ def _apply_sun_monkey_patch(hass: HomeAssistant) -> None:
             return
         original_update_events(self, now)
 
+    def _patched_async_write_ha_state(self: Sun, *args: Any, **kwargs: Any) -> None:
+        if _SUN_ENTITY_ID in hass.data[DOMAIN]["frozen_entities"]:
+            return
+        original_async_write_ha_state(self, *args, **kwargs)
+
     Sun.update_sun_position = _patched_update_sun_position  # type: ignore[method-assign]
     Sun.update_events = _patched_update_events  # type: ignore[method-assign]
+    Sun.async_write_ha_state = _patched_async_write_ha_state  # type: ignore[method-assign,misc,assignment]
     _LOGGER.info("[ha_test_harness] Monkey-patched Sun callbacks for sun freeze support")
 
 
