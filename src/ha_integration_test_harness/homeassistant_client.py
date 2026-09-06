@@ -3,7 +3,9 @@
 import json
 import logging
 import time
-from datetime import datetime
+from datetime import date, datetime
+from datetime import time as dt_time
+from datetime import timedelta, timezone
 from typing import Any, Callable, NoReturn, Optional, Union, overload
 from urllib.parse import urlparse, urlunparse
 
@@ -315,6 +317,323 @@ class HomeAssistant:
 
             last_state = current_state
             time.sleep(1)
+
+    @overload
+    def assert_entity_was_in_state(
+        self,
+        entity_id: str,
+        expected_state: str,
+        between: tuple[dt_time, dt_time],
+        expected_attributes: Optional[dict[str, Any]] = None,
+        require_full_duration: bool = False,
+    ) -> list[dict[str, Any]]: ...
+
+    @overload
+    def assert_entity_was_in_state(
+        self,
+        entity_id: str,
+        expected_state: Callable[[str], bool],
+        between: tuple[dt_time, dt_time],
+        expected_attributes: Optional[dict[str, Any]] = None,
+        require_full_duration: bool = False,
+    ) -> list[dict[str, Any]]: ...
+
+    @overload
+    def assert_entity_was_in_state(
+        self,
+        entity_id: str,
+        expected_state: None,
+        between: tuple[dt_time, dt_time],
+        expected_attributes: dict[str, Any],
+        require_full_duration: bool = False,
+    ) -> list[dict[str, Any]]: ...
+
+    def assert_entity_was_in_state(
+        self,
+        entity_id: str,
+        expected_state: Union[str, Callable[[str], bool], None] = None,
+        between: tuple[dt_time, dt_time] = None,  # type: ignore[assignment]
+        expected_attributes: Optional[dict[str, Any]] = None,
+        require_full_duration: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Assert that an entity was in a specific state during a time window.
+
+        Queries the History API to verify an entity entered (or remained in) a specific state
+        during a time window expressed as time-of-day pairs relative to the fake clock.
+
+        **Two modes:**
+
+        - **Transition mode** (default): Asserts the entity entered the expected state at some
+          point during the window.
+        - **Full-duration mode** (``require_full_duration=True``): Asserts the entity remained
+          in the expected state throughout the entire window.
+
+        **Behavior:**
+
+        - Resolves ``between`` time-of-day pairs to UTC datetimes using the fake clock's date
+          (or real UTC if no fake time is set).
+        - Supports midnight crossing: if ``min_time > max_time``, assumes ``max_time`` is on
+          the next day.
+        - Returns the matching history entries (list of dicts).
+        - Raises ``AssertionError`` with window-scoped history on failure.
+        - Failure messages include both the local time window and the UTC datetimes used.
+
+        Args:
+            entity_id: The entity ID to check (e.g., "light.bathroom").
+            expected_state: Either a string for exact match, or a callable that takes the current
+                state string and returns True when satisfied. Pass None to skip state checking
+                (requires ``expected_attributes``).
+            between: A tuple of two ``datetime.time`` objects defining the time window (inclusive).
+                Required parameter.
+            expected_attributes: Optional dictionary of attribute name to expected value. Each value
+                may be an exact value (compared with ``==``) or a callable predicate.
+            require_full_duration: If True, asserts the entity remained in the expected state
+                throughout the entire window. If False (default), asserts the entity entered the
+                expected state at some point during the window.
+
+        Returns:
+            A list of history entry dicts matching the criteria.
+
+        Raises:
+            ValueError: If neither ``expected_state`` nor ``expected_attributes`` is provided,
+                or if ``between`` is not provided, or if ``min_time == max_time``.
+            AssertionError: If the entity was not in the expected state during the window.
+        """
+        if expected_state is None and expected_attributes is None:
+            raise ValueError("At least one of expected_state or expected_attributes must be provided")
+        if between is None:
+            raise ValueError("The 'between' parameter is required")
+
+        min_time, max_time = between
+        if min_time == max_time:
+            raise ValueError("Zero-width time window: min_time and max_time must differ")
+
+        start_dt, end_dt = self._resolve_time_window(min_time, max_time)
+
+        history = self._get_state_history(entity_id, start_dt, end_dt)
+        if history is None:
+            raise AssertionError(f"Failed to query history for {entity_id} between {min_time} and {max_time} " f"(UTC: {start_dt.isoformat()} to {end_dt.isoformat()})")
+
+        if not history:
+            raise AssertionError(f"No state changes recorded for {entity_id} between {min_time} and {max_time} " f"(UTC: {start_dt.isoformat()} to {end_dt.isoformat()})")
+
+        matching_entries = self._filter_history_entries(history, expected_state, expected_attributes, require_full_duration, start_dt, end_dt)
+
+        if not matching_entries:
+            mode_desc = "throughout the entire window" if require_full_duration else "at some point during the window"
+            history_snippet = self._format_window_history(history, start_dt)
+
+            if expected_state is None and expected_attributes is not None:
+                attr_keys = ", ".join(sorted(expected_attributes.keys()))
+                error_msg = (
+                    f"Entity {entity_id} did not have expected attributes ({attr_keys}) {mode_desc} "
+                    f"between {min_time} and {max_time} (UTC: {start_dt.isoformat()} to {end_dt.isoformat()}).\n"
+                    f"{history_snippet}"
+                )
+            elif expected_state is not None and expected_attributes is None:
+                state_desc = "predicate function" if callable(expected_state) else f"'{expected_state}'"
+                error_msg = (
+                    f"Entity {entity_id} was not in state {state_desc} {mode_desc} " f"between {min_time} and {max_time} (UTC: {start_dt.isoformat()} to {end_dt.isoformat()}).\n" f"{history_snippet}"
+                )
+            else:
+                state_desc = "predicate function" if callable(expected_state) else f"'{expected_state}'"
+                attr_keys = ", ".join(sorted(expected_attributes.keys())) if expected_attributes else ""
+                error_msg = (
+                    f"Entity {entity_id} was not in state {state_desc} with expected attributes ({attr_keys}) {mode_desc} "
+                    f"between {min_time} and {max_time} (UTC: {start_dt.isoformat()} to {end_dt.isoformat()}).\n"
+                    f"{history_snippet}"
+                )
+
+            raise AssertionError(error_msg)
+
+        return matching_entries
+
+    def _resolve_time_window(self, min_time: dt_time, max_time: dt_time) -> tuple[datetime, datetime]:
+        """Resolve time-of-day pairs to UTC datetimes using the fake clock's date.
+
+        Args:
+            min_time: Start of the time window.
+            max_time: End of the time window.
+
+        Returns:
+            A tuple of (start_utc, end_utc) as timezone-aware UTC datetimes.
+        """
+        reference_date = self._get_reference_date()
+
+        start_dt = datetime.combine(reference_date, min_time, tzinfo=timezone.utc)
+        end_dt = datetime.combine(reference_date, max_time, tzinfo=timezone.utc)
+
+        if min_time > max_time:
+            end_dt += timedelta(days=1)
+
+        return start_dt, end_dt
+
+    def _get_reference_date(self) -> date:
+        """Get the reference date for resolving time windows.
+
+        Uses the fake clock's date if available, otherwise falls back to real UTC.
+
+        Returns:
+            A date object representing the reference date.
+        """
+        try:
+            fake_time_result = self.ws_time_get()
+            fake_timestamp = fake_time_result.get("timestamp")
+            if fake_timestamp:
+                fake_dt = datetime.fromisoformat(fake_timestamp)
+                if fake_dt.tzinfo is not None:
+                    fake_dt = fake_dt.astimezone(timezone.utc)
+                return fake_dt.date()
+        except Exception:
+            pass
+        return datetime.now(timezone.utc).date()
+
+    def _filter_history_entries(
+        self,
+        history: list[dict[str, Any]],
+        expected_state: Union[str, Callable[[str], bool], None],
+        expected_attributes: Optional[dict[str, Any]],
+        require_full_duration: bool,
+        start_dt: datetime,
+        end_dt: datetime,
+    ) -> list[dict[str, Any]]:
+        """Filter history entries based on expected state/attributes and mode.
+
+        Args:
+            history: List of history entry dicts from the History API.
+            expected_state: Expected state value or predicate.
+            expected_attributes: Expected attributes dict.
+            require_full_duration: Whether to check full-duration or transition mode.
+            start_dt: Start of the time window (UTC).
+            end_dt: End of the time window (UTC).
+
+        Returns:
+            List of matching history entries.
+        """
+        matching: list[dict[str, Any]] = []
+
+        for entry in history:
+            current_state = entry.get("state", "")
+            current_attrs = entry.get("attributes", {})
+
+            state_matches = True
+            if expected_state is not None:
+                if callable(expected_state):
+                    state_matches = expected_state(current_state)
+                else:
+                    state_matches = current_state == expected_state
+
+            attrs_match = True
+            if expected_attributes is not None:
+                for attr_name, attr_expected in expected_attributes.items():
+                    attr_actual = current_attrs.get(attr_name)
+                    if callable(attr_expected):
+                        if not attr_expected(attr_actual):
+                            attrs_match = False
+                            break
+                    else:
+                        if attr_actual != attr_expected:
+                            attrs_match = False
+                            break
+
+            if state_matches and attrs_match:
+                matching.append(entry)
+
+        if require_full_duration and matching:
+            if not self._check_full_duration(history, matching, start_dt, end_dt):
+                return []
+
+        return matching
+
+    def _check_full_duration(
+        self,
+        history: list[dict[str, Any]],
+        matching_entries: list[dict[str, Any]],
+        start_dt: datetime,
+        end_dt: datetime,
+    ) -> bool:
+        """Check if the entity remained in the expected state throughout the entire window.
+
+        Args:
+            history: Full history for the window.
+            matching_entries: Entries that match the expected state/attributes.
+            start_dt: Start of the time window (UTC).
+            end_dt: End of the time window (UTC).
+
+        Returns:
+            True if the entity was in the expected state for the entire window.
+        """
+        if not matching_entries:
+            return False
+
+        first_match = matching_entries[0]
+        first_match_ts = self._parse_history_timestamp(first_match)
+
+        if first_match_ts > start_dt:
+            return False
+
+        last_match = matching_entries[-1]
+        last_match_ts = self._parse_history_timestamp(last_match)
+
+        if last_match_ts < end_dt:
+            last_history_ts = self._parse_history_timestamp(history[-1])
+            if last_history_ts < end_dt:
+                return False
+
+        return True
+
+    def _parse_history_timestamp(self, entry: dict[str, Any]) -> datetime:
+        """Parse a timestamp from a history entry.
+
+        Args:
+            entry: A history entry dict.
+
+        Returns:
+            A timezone-aware UTC datetime.
+        """
+        ts_str = entry.get("last_changed", entry.get("last_updated", ""))
+        try:
+            ts = datetime.fromisoformat(ts_str)
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            return ts
+        except Exception:
+            return datetime.now(timezone.utc)
+
+    def _format_window_history(self, history: list[dict[str, Any]], start_dt: datetime) -> str:
+        """Format history entries for inclusion in error messages.
+
+        Args:
+            history: List of history entry dicts.
+            start_dt: Start of the time window (for relative timestamps).
+
+        Returns:
+            A formatted string showing the history.
+        """
+        if not history:
+            return "No state changes recorded in the window."
+
+        lines: list[str] = ["State changes in window:"]
+        for entry in history[:10]:
+            ts_str = entry.get("last_changed", entry.get("last_updated", ""))
+            try:
+                ts = datetime.fromisoformat(ts_str)
+                if ts.tzinfo is not None:
+                    ts = ts.replace(tzinfo=None)
+                relative = (ts - start_dt.replace(tzinfo=None)).total_seconds()
+                relative_str = f"+{relative:.1f}s" if relative >= 0 else f"{relative:.1f}s"
+                absolute_str = ts.strftime("%H:%M:%S")
+            except Exception:
+                relative_str = "??"
+                absolute_str = "??:??:??"
+
+            state = entry.get("state", "")
+            lines.append(f"  [{absolute_str}] ({relative_str}) {state}")
+
+        if len(history) > 10:
+            lines.append(f"  ... and {len(history) - 10} more changes")
+
+        return "\n".join(lines)
 
     def _get_state_history(self, entity_id: str, start_time: datetime, end_time: datetime) -> Optional[list[dict[str, Any]]]:
         from datetime import timezone
