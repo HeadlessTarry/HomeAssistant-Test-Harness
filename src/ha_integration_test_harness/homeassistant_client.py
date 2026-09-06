@@ -627,8 +627,10 @@ class HomeAssistant:
                 relative_str = "??"
                 absolute_str = "??:??:??"
 
-            state = entry.get("state", "")
-            lines.append(f"  [{absolute_str}] ({relative_str}) {state}")
+            state = entry.get("state", "<missing>")
+            attrs = entry.get("attributes", {})
+            attr_str = f" | {attrs}" if attrs else ""
+            lines.append(f"  [{absolute_str}] ({relative_str}) {state}{attr_str}")
 
         if len(history) > 10:
             lines.append(f"  ... and {len(history) - 10} more changes")
