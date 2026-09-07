@@ -411,6 +411,46 @@ class HomeAssistant:
 
         start_dt, end_dt = self._resolve_time_window(min_time, max_time)
 
+        history, matching_entries = self._query_history_with_retry(entity_id, expected_state, expected_attributes, require_full_duration, start_dt, end_dt, min_time, max_time)
+
+        if not history:
+            utc_range = f"(UTC: {start_dt.isoformat()} to {end_dt.isoformat()})"
+            if self.get_state(entity_id) is None:
+                raise AssertionError(f"Entity {entity_id} not found in history for the given window between {min_time} and {max_time} {utc_range}")
+            raise AssertionError(f"No state changes recorded for {entity_id} between {min_time} and {max_time} {utc_range}")
+
+        if not matching_entries:
+            error_msg = self._build_assertion_error_message(entity_id, expected_state, expected_attributes, require_full_duration, min_time, max_time, start_dt, end_dt, history)
+            raise AssertionError(error_msg)
+
+        return matching_entries
+
+    def _query_history_with_retry(
+        self,
+        entity_id: str,
+        expected_state: str | Callable[[str], bool] | None,
+        expected_attributes: dict[str, Any] | None,
+        require_full_duration: bool,
+        start_dt: datetime,
+        end_dt: datetime,
+        min_time: dt_time,
+        max_time: dt_time,
+    ) -> tuple[Optional[list[dict[str, Any]]], list[dict[str, Any]]]:
+        """Query history with retry logic to handle recorder flush delays.
+
+        Args:
+            entity_id: The entity ID to query.
+            expected_state: Expected state value or predicate.
+            expected_attributes: Expected attributes dict.
+            require_full_duration: Whether to check full-duration mode.
+            start_dt: Start of the time window (UTC).
+            end_dt: End of the time window (UTC).
+            min_time: Start of the time window (local time, for error messages).
+            max_time: End of the time window (local time, for error messages).
+
+        Returns:
+            A tuple of (history, matching_entries).
+        """
         max_retries = 5
         retry_delay = 0.5
         history: Optional[list[dict[str, Any]]] = None
@@ -419,7 +459,7 @@ class HomeAssistant:
         for attempt in range(max_retries):
             history = self._get_state_history(entity_id, start_dt, end_dt)
             if history is None:
-                raise AssertionError(f"Failed to query history for {entity_id} between {min_time} and {max_time} " f"(UTC: {start_dt.isoformat()} to {end_dt.isoformat()})")
+                raise AssertionError(f"Failed to query history for {entity_id} between {min_time} and {max_time} (UTC: {start_dt.isoformat()} to {end_dt.isoformat()})")
 
             if history:
                 matching_entries = self._filter_history_entries(history, expected_state, expected_attributes, require_full_duration, start_dt)
@@ -429,17 +469,7 @@ class HomeAssistant:
             if attempt < max_retries - 1:
                 time.sleep(retry_delay)
 
-        if not history:
-            utc_range = f"(UTC: {start_dt.isoformat()} to {end_dt.isoformat()})"
-            if self.get_state(entity_id) is None:
-                raise AssertionError(f"Entity {entity_id} not found in history for the given window " f"between {min_time} and {max_time} {utc_range}")
-            raise AssertionError(f"No state changes recorded for {entity_id} between {min_time} and {max_time} {utc_range}")
-
-        if not matching_entries:
-            error_msg = self._build_assertion_error_message(entity_id, expected_state, expected_attributes, require_full_duration, min_time, max_time, start_dt, end_dt, history)
-            raise AssertionError(error_msg)
-
-        return matching_entries
+        return history, matching_entries
 
     def _build_assertion_error_message(
         self,
@@ -475,15 +505,15 @@ class HomeAssistant:
 
         if expected_state is None and expected_attributes is not None:
             attr_keys = ", ".join(sorted(expected_attributes.keys()))
-            return f"Entity {entity_id} did not have expected attributes ({attr_keys}) {mode_desc} " f"between {min_time} and {max_time} {utc_range}.\n{history_snippet}"
+            return f"Entity {entity_id} did not have expected attributes ({attr_keys}) {mode_desc} between {min_time} and {max_time} {utc_range}.\n{history_snippet}"
 
         state_desc = _PREDICATE_FUNCTION_DESC if callable(expected_state) else f"'{expected_state}'"
 
         if expected_attributes is None:
-            return f"Entity {entity_id} was not in state {state_desc} {mode_desc} " f"between {min_time} and {max_time} {utc_range}.\n{history_snippet}"
+            return f"Entity {entity_id} was not in state {state_desc} {mode_desc} between {min_time} and {max_time} {utc_range}.\n{history_snippet}"
 
         attr_keys = ", ".join(sorted(expected_attributes.keys()))
-        return f"Entity {entity_id} was not in state {state_desc} with expected attributes ({attr_keys}) {mode_desc} " f"between {min_time} and {max_time} {utc_range}.\n{history_snippet}"
+        return f"Entity {entity_id} was not in state {state_desc} with expected attributes ({attr_keys}) {mode_desc} between {min_time} and {max_time} {utc_range}.\n{history_snippet}"
 
     def _resolve_time_window(self, min_time: dt_time, max_time: dt_time) -> tuple[datetime, datetime]:
         """Resolve time-of-day pairs to UTC datetimes using the fake clock's date.
