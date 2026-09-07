@@ -654,8 +654,11 @@ class HomeAssistant:
             response = requests.get(url, headers=headers, params=params, timeout=self._timeout)
             response.raise_for_status()
             result: list[list[dict[str, Any]]] = response.json()
+            logger.info(f"History API response for {entity_id}: {len(result)} entity groups, raw result: {result}")
             if result and len(result) > 0:
+                logger.info(f"First entity group has {len(result[0])} entries")
                 return result[0]
+            logger.info(f"History API returned empty result for {entity_id}")
             return []
         except Exception as e:
             logger.warning(f"Failed to get state history for {entity_id}: {e}")
