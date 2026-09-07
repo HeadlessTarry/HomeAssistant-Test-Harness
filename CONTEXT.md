@@ -75,6 +75,28 @@ _Avoid_: State log, event history, transition log
 The timestamp captured at the start of each test (via `pytest_runtest_setup` hook). Used as the start of the History API query window for assertion diagnostics.
 _Avoid_: Test begin time, fixture start time
 
+**Retrospective assertion**:
+An assertion that queries historical state data rather than polling current state.
+Used to verify that an entity entered or remained in a specific state during a past time window.
+Implemented via `assert_entity_was_in_state()`.
+_Avoid_: Historical assertion, past state check, history query
+
+**Time window**:
+A bounded interval of fake-clock time within which a retrospective assertion checks entity history.
+Expressed as a pair of `datetime.time` objects (start and end) relative to the fake clock's date.
+Supports midnight crossing (if start > end, the window spans into the next day).
+_Avoid_: Time range, time period, duration window
+
+**Transition semantics**:
+Verification that an entity entered the expected state at some point during the time window.
+The default mode for `assert_entity_was_in_state()`.
+_Avoid_: Eventual state check, at-least-once check, occurrence check
+
+**Full-duration semantics**:
+Verification that an entity remained in the expected state throughout the entire time window.
+Enabled by passing `require_full_duration=True` to `assert_entity_was_in_state()`.
+_Avoid_: Continuous state check, persistent state check, duration check
+
 **Stabilization**:
 _Defined term removed._ Previously referred to health check polling after time jumps.
 With WebSocket-based time control replacing libfaketime, HA's asyncio event loop no longer
