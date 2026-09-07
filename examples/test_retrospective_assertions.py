@@ -56,17 +56,18 @@ class TestRetrospectiveAssertions:
     def test_full_duration_mode(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
         """Test full-duration mode: entity remained in expected state throughout window."""
         entity = "sensor.full_duration_test"
-        home_assistant.given_an_entity(entity, state="on").with_attributes({"brightness": 255})
+        home_assistant.given_an_entity(entity, state="off")
 
         current_time = home_assistant.ws_time_get()
         current_hour = int(current_time["timestamp"][11:13])
         current_minute = int(current_time["timestamp"][14:16])
 
-        start_hour, start_minute = _add_minutes(current_hour, current_minute, 1)
-        end_hour, end_minute = _add_minutes(current_hour, current_minute, 4)
+        start_hour, start_minute = current_hour, current_minute
+        end_hour, end_minute = _add_minutes(current_hour, current_minute, 3)
 
+        home_assistant.set_state(entity, "on", {"brightness": 255})
         time_machine.fast_forward(timedelta(minutes=1))
-        time_machine.fast_forward(timedelta(minutes=3))
+        time_machine.fast_forward(timedelta(minutes=2))
 
         entries = home_assistant.assert_entity_was_in_state(
             entity,
@@ -79,17 +80,18 @@ class TestRetrospectiveAssertions:
     def test_attribute_matching(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
         """Test retrospective assertion with attribute matching."""
         entity = "sensor.attr_match_test"
-        home_assistant.given_an_entity(entity, state="on").with_attributes({"brightness": 128, "color_temp": 4000})
+        home_assistant.given_an_entity(entity, state="off")
 
         current_time = home_assistant.ws_time_get()
         current_hour = int(current_time["timestamp"][11:13])
         current_minute = int(current_time["timestamp"][14:16])
 
-        start_hour, start_minute = _add_minutes(current_hour, current_minute, 1)
-        end_hour, end_minute = _add_minutes(current_hour, current_minute, 4)
+        start_hour, start_minute = current_hour, current_minute
+        end_hour, end_minute = _add_minutes(current_hour, current_minute, 3)
 
+        home_assistant.set_state(entity, "on", {"brightness": 128, "color_temp": 4000})
         time_machine.fast_forward(timedelta(minutes=1))
-        time_machine.fast_forward(timedelta(minutes=3))
+        time_machine.fast_forward(timedelta(minutes=2))
 
         entries = home_assistant.assert_entity_was_in_state(
             entity,
