@@ -649,20 +649,29 @@ class HomeAssistant:
         url = f"{self._base_url}/api/history/period/{start_time.isoformat()}"
         params = {"filter_entity_id": entity_id, "end": end_time.isoformat()}
         logger.info(f"Querying history for {entity_id}: {url} with params {params}")
-        try:
-            headers = {"Authorization": f"Bearer {self._access_token}"}
-            response = requests.get(url, headers=headers, params=params, timeout=self._timeout)
-            response.raise_for_status()
-            result: list[list[dict[str, Any]]] = response.json()
-            logger.info(f"History API response for {entity_id}: {len(result)} entity groups, raw result: {result}")
-            if result and len(result) > 0:
-                logger.info(f"First entity group has {len(result[0])} entries")
-                return result[0]
-            logger.info(f"History API returned empty result for {entity_id}")
-            return []
-        except Exception as e:
-            logger.warning(f"Failed to get state history for {entity_id}: {e}")
-            return None
+
+        max_retries = 5
+        retry_delay = 0.5
+
+        for attempt in range(max_retries):
+            try:
+                headers = {"Authorization": f"Bearer {self._access_token}"}
+                response = requests.get(url, headers=headers, params=params, timeout=self._timeout)
+                response.raise_for_status()
+                result: list[list[dict[str, Any]]] = response.json()
+                logger.info(f"History API response for {entity_id}: {len(result)} entity groups (attempt {attempt + 1}/{max_retries})")
+                if result and len(result) > 0:
+                    logger.info(f"First entity group has {len(result[0])} entries")
+                    return result[0]
+                logger.info(f"History API returned empty result for {entity_id} (attempt {attempt + 1}/{max_retries})")
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+            except Exception as e:
+                logger.warning(f"Failed to get state history for {entity_id}: {e}")
+                return None
+
+        logger.info(f"History API returned empty result for {entity_id} after {max_retries} attempts")
+        return []
 
     def _build_assertion_diagnostics(self, entity_id: str) -> str:
         if self._test_start_time is None:
