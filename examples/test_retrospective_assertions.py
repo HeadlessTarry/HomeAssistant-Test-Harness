@@ -67,8 +67,7 @@ class TestRetrospectiveAssertions:
         end_hour, end_minute = _add_minutes(current_hour, current_minute, 3)
 
         home_assistant.set_state(entity, "on", {"brightness": 255})
-        time_machine.fast_forward(timedelta(minutes=1))
-        time_machine.fast_forward(timedelta(minutes=2))
+        time_machine.fast_forward(timedelta(minutes=3))
 
         entries = home_assistant.assert_entity_was_in_state(
             entity,
@@ -91,8 +90,7 @@ class TestRetrospectiveAssertions:
         end_hour, end_minute = _add_minutes(current_hour, current_minute, 3)
 
         home_assistant.set_state(entity, "on", {"brightness": 128, "color_temp": 4000})
-        time_machine.fast_forward(timedelta(minutes=1))
-        time_machine.fast_forward(timedelta(minutes=2))
+        time_machine.fast_forward(timedelta(minutes=3))
 
         entries = home_assistant.assert_entity_was_in_state(
             entity,
@@ -164,8 +162,7 @@ class TestRetrospectiveAssertions:
         start_hour, start_minute = _add_minutes(current_hour, current_minute, 1)
         end_hour, end_minute = _add_minutes(current_hour, current_minute, 3)
 
-        time_machine.fast_forward(timedelta(minutes=1))
-        time_machine.fast_forward(timedelta(minutes=3))
+        time_machine.fast_forward(timedelta(minutes=4))
 
         entries = home_assistant.assert_entity_was_in_state(
             self.an_entity,
@@ -307,8 +304,7 @@ class TestRetrospectiveAssertions:
         start_hour, start_minute = _add_minutes(current_hour, current_minute, 1)
         end_hour, end_minute = _add_minutes(current_hour, current_minute, 3)
 
-        time_machine.fast_forward(timedelta(minutes=1))
-        time_machine.fast_forward(timedelta(minutes=3))
+        time_machine.fast_forward(timedelta(minutes=4))
 
         entries = home_assistant.assert_entity_was_in_state(
             self.an_entity,
@@ -338,8 +334,7 @@ class TestRetrospectiveAssertions:
         end_hour, end_minute = _add_minutes(current_hour, current_minute, 3)
 
         home_assistant.set_state(entity, "on", {"brightness": 255})
-        time_machine.fast_forward(timedelta(minutes=1))
-        time_machine.fast_forward(timedelta(minutes=2))
+        time_machine.fast_forward(timedelta(minutes=3))
 
         print("\n[DIAGNOSTIC] test_async_hypothesis_with_sleep:")
         print("  Adding 2 second sleep before querying history...")
@@ -371,8 +366,7 @@ class TestRetrospectiveAssertions:
         end_hour, end_minute = _add_minutes(current_hour, current_minute, 3)
 
         home_assistant.set_state(entity, "on", {"brightness": 255})
-        time_machine.fast_forward(timedelta(minutes=1))
-        time_machine.fast_forward(timedelta(minutes=2))
+        time_machine.fast_forward(timedelta(minutes=3))
 
         print("\n[DIAGNOSTIC] test_retry_hypothesis:")
 
