@@ -21,6 +21,7 @@ _HEALTH_CHECK_TIMEOUT = 3
 _HEALTH_CHECK_POLL_TIMEOUT = 10
 _HEALTH_CHECK_INITIAL_INTERVAL = 0.1
 _HEALTH_CHECK_MAX_INTERVAL = 1.0
+_PREDICATE_FUNCTION_DESC = "predicate function"
 
 # Sentinel object used to distinguish "not provided" from ``None`` in optional parameters.
 # Typed as ``Any`` so mypy accepts it as a default for parameters typed ``Optional[str]``
@@ -240,7 +241,7 @@ class HomeAssistant:
 
         start_time = time.time()
         last_state = None
-        state_desc = "predicate function" if callable(expected_state) else f"'{expected_state}'"
+        state_desc = _PREDICATE_FUNCTION_DESC if callable(expected_state) else f"'{expected_state}'"
 
         while True:
             state_response = self.get_state(entity_id)
@@ -351,9 +352,9 @@ class HomeAssistant:
     def assert_entity_was_in_state(
         self,
         entity_id: str,
-        expected_state: Union[str, Callable[[str], bool], None] = None,
-        between: Optional[tuple[dt_time, dt_time]] = None,
-        expected_attributes: Optional[dict[str, Any]] = None,
+        expected_state: str | Callable[[str], bool] | None = None,
+        between: tuple[dt_time, dt_time] | None = None,
+        expected_attributes: dict[str, Any] | None = None,
         require_full_duration: bool = False,
     ) -> list[dict[str, Any]]:
         """Assert that an entity was in a specific state during a time window.
@@ -418,10 +419,10 @@ class HomeAssistant:
         for attempt in range(max_retries):
             history = self._get_state_history(entity_id, start_dt, end_dt)
             if history is None:
-                raise AssertionError(f"Failed to query history for {entity_id} " f"between {min_time} and {max_time} " f"(UTC: {start_dt.isoformat()} to {end_dt.isoformat()})")
+                raise AssertionError(f"Failed to query history for {entity_id} between {min_time} and {max_time} " f"(UTC: {start_dt.isoformat()} to {end_dt.isoformat()})")
 
             if history:
-                matching_entries = self._filter_history_entries(history, expected_state, expected_attributes, require_full_duration, start_dt, end_dt)
+                matching_entries = self._filter_history_entries(history, expected_state, expected_attributes, require_full_duration, start_dt)
                 if matching_entries:
                     break
 
@@ -432,7 +433,7 @@ class HomeAssistant:
             utc_range = f"(UTC: {start_dt.isoformat()} to {end_dt.isoformat()})"
             if self.get_state(entity_id) is None:
                 raise AssertionError(f"Entity {entity_id} not found in history for the given window " f"between {min_time} and {max_time} {utc_range}")
-            raise AssertionError(f"No state changes recorded for {entity_id} " f"between {min_time} and {max_time} {utc_range}")
+            raise AssertionError(f"No state changes recorded for {entity_id} between {min_time} and {max_time} {utc_range}")
 
         if not matching_entries:
             mode_desc = "throughout the entire window" if require_full_duration else "at some point during the window"
@@ -446,7 +447,7 @@ class HomeAssistant:
                     f"{history_snippet}"
                 )
             elif expected_state is not None and expected_attributes is None:
-                state_desc = "predicate function" if callable(expected_state) else f"'{expected_state}'"
+                state_desc = _PREDICATE_FUNCTION_DESC if callable(expected_state) else f"'{expected_state}'"
                 error_msg = (
                     f"Entity {entity_id} was not in state {state_desc} {mode_desc} "
                     f"between {min_time} and {max_time} "
@@ -454,7 +455,7 @@ class HomeAssistant:
                     f"{history_snippet}"
                 )
             else:
-                state_desc = "predicate function" if callable(expected_state) else f"'{expected_state}'"
+                state_desc = _PREDICATE_FUNCTION_DESC if callable(expected_state) else f"'{expected_state}'"
                 attr_keys = ", ".join(sorted(expected_attributes.keys())) if expected_attributes else ""
                 error_msg = (
                     f"Entity {entity_id} was not in state {state_desc} with expected attributes ({attr_keys}) {mode_desc} "
@@ -509,11 +510,10 @@ class HomeAssistant:
     def _filter_history_entries(
         self,
         history: list[dict[str, Any]],
-        expected_state: Union[str, Callable[[str], bool], None],
-        expected_attributes: Optional[dict[str, Any]],
+        expected_state: str | Callable[[str], bool] | None,
+        expected_attributes: dict[str, Any] | None,
         require_full_duration: bool,
         start_dt: datetime,
-        end_dt: datetime,
     ) -> list[dict[str, Any]]:
         """Filter history entries based on expected state/attributes and mode.
 
@@ -523,7 +523,6 @@ class HomeAssistant:
             expected_attributes: Expected attributes dict.
             require_full_duration: Whether to check full-duration or transition mode.
             start_dt: Start of the time window (UTC).
-            end_dt: End of the time window (UTC).
 
         Returns:
             List of matching history entries.

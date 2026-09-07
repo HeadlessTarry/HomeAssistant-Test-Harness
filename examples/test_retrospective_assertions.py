@@ -62,68 +62,21 @@ class TestRetrospectiveAssertions:
         current_time = home_assistant.ws_time_get()
         current_hour = int(current_time["timestamp"][11:13])
         current_minute = int(current_time["timestamp"][14:16])
-        current_second = int(current_time["timestamp"][17:19])
-
-        print("\n[DIAGNOSTIC] test_full_duration_mode:")
-        print(f"  Current fake time: {current_time['timestamp']}")
-        print(f"  Parsed: {current_hour:02d}:{current_minute:02d}:{current_second:02d}")
 
         start_hour, start_minute = current_hour, current_minute
         end_hour, end_minute = _add_minutes(current_hour, current_minute, 3)
 
-        print(f"  Time window: {start_hour:02d}:{start_minute:02d} to {end_hour:02d}:{end_minute:02d}")
-
         home_assistant.set_state(entity, "on", {"brightness": 255})
-
-        time_after_set = home_assistant.ws_time_get()
-        print(f"  Time after set_state: {time_after_set['timestamp']}")
-
-        state_check = home_assistant.get_state(entity)
-        print(f"  Entity state after set_state: {state_check['state'] if isinstance(state_check, dict) else state_check}")
-
         time_machine.fast_forward(timedelta(minutes=1))
         time_machine.fast_forward(timedelta(minutes=2))
 
-        time_after_advance = home_assistant.ws_time_get()
-        print(f"  Time after fast_forward: {time_after_advance['timestamp']}")
+        entries = home_assistant.assert_entity_was_in_state(
+            entity,
+            "on",
+            between=(time(start_hour, start_minute), time(end_hour, end_minute)),
+        )
 
-        print(f"  Querying history for window: {start_hour:02d}:{start_minute:02d} to {end_hour:02d}:{end_minute:02d}")
-
-        try:
-            entries = home_assistant.assert_entity_was_in_state(
-                entity,
-                "on",
-                between=(time(start_hour, start_minute), time(end_hour, end_minute)),
-            )
-            print(f"  SUCCESS: Found {len(entries)} entries")
-            assert len(entries) > 0
-        except AssertionError as e:
-            print(f"  FAILED: {e}")
-
-            # Additional diagnostics
-            from datetime import datetime, timezone
-
-            reference_date = home_assistant._get_reference_date()
-            start_dt = datetime.combine(reference_date, time(start_hour, start_minute), tzinfo=timezone.utc)
-            end_dt = datetime.combine(reference_date, time(end_hour, end_minute), tzinfo=timezone.utc)
-
-            print(f"  Reference date: {reference_date}")
-            print(f"  Query window (UTC): {start_dt.isoformat()} to {end_dt.isoformat()}")
-
-            history = home_assistant._get_state_history(entity, start_dt, end_dt)
-            print(f"  Raw history result: {history}")
-
-            if history:
-                for i, entry in enumerate(history[:5]):
-                    print(f"    Entry {i}: state={entry.get('state')}, last_changed={entry.get('last_changed')}")
-
-            # Try wider window
-            wider_start = start_dt - timedelta(minutes=5)
-            wider_end = end_dt + timedelta(minutes=5)
-            wider_history = home_assistant._get_state_history(entity, wider_start, wider_end)
-            print(f"  Wider window history: {wider_history}")
-
-            raise
+        assert len(entries) > 0
 
     def test_attribute_matching(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
         """Test retrospective assertion with attribute matching."""
@@ -133,70 +86,23 @@ class TestRetrospectiveAssertions:
         current_time = home_assistant.ws_time_get()
         current_hour = int(current_time["timestamp"][11:13])
         current_minute = int(current_time["timestamp"][14:16])
-        current_second = int(current_time["timestamp"][17:19])
-
-        print("\n[DIAGNOSTIC] test_attribute_matching:")
-        print(f"  Current fake time: {current_time['timestamp']}")
-        print(f"  Parsed: {current_hour:02d}:{current_minute:02d}:{current_second:02d}")
 
         start_hour, start_minute = current_hour, current_minute
         end_hour, end_minute = _add_minutes(current_hour, current_minute, 3)
 
-        print(f"  Time window: {start_hour:02d}:{start_minute:02d} to {end_hour:02d}:{end_minute:02d}")
-
         home_assistant.set_state(entity, "on", {"brightness": 128, "color_temp": 4000})
-
-        time_after_set = home_assistant.ws_time_get()
-        print(f"  Time after set_state: {time_after_set['timestamp']}")
-
-        state_check = home_assistant.get_state(entity)
-        print(f"  Entity state after set_state: {state_check['state'] if isinstance(state_check, dict) else state_check}")
-
         time_machine.fast_forward(timedelta(minutes=1))
         time_machine.fast_forward(timedelta(minutes=2))
 
-        time_after_advance = home_assistant.ws_time_get()
-        print(f"  Time after fast_forward: {time_after_advance['timestamp']}")
+        entries = home_assistant.assert_entity_was_in_state(
+            entity,
+            "on",
+            between=(time(start_hour, start_minute), time(end_hour, end_minute)),
+            expected_attributes={"brightness": 128},
+        )
 
-        print(f"  Querying history for window: {start_hour:02d}:{start_minute:02d} to {end_hour:02d}:{end_minute:02d}")
-
-        try:
-            entries = home_assistant.assert_entity_was_in_state(
-                entity,
-                "on",
-                between=(time(start_hour, start_minute), time(end_hour, end_minute)),
-                expected_attributes={"brightness": 128},
-            )
-            print(f"  SUCCESS: Found {len(entries)} entries")
-            assert len(entries) > 0
-            assert entries[0]["attributes"]["brightness"] == 128
-        except AssertionError as e:
-            print(f"  FAILED: {e}")
-
-            # Additional diagnostics
-            from datetime import datetime, timezone
-
-            reference_date = home_assistant._get_reference_date()
-            start_dt = datetime.combine(reference_date, time(start_hour, start_minute), tzinfo=timezone.utc)
-            end_dt = datetime.combine(reference_date, time(end_hour, end_minute), tzinfo=timezone.utc)
-
-            print(f"  Reference date: {reference_date}")
-            print(f"  Query window (UTC): {start_dt.isoformat()} to {end_dt.isoformat()}")
-
-            history = home_assistant._get_state_history(entity, start_dt, end_dt)
-            print(f"  Raw history result: {history}")
-
-            if history:
-                for i, entry in enumerate(history[:5]):
-                    print(f"    Entry {i}: state={entry.get('state')}, last_changed={entry.get('last_changed')}")
-
-            # Try wider window
-            wider_start = start_dt - timedelta(minutes=5)
-            wider_end = end_dt + timedelta(minutes=5)
-            wider_history = home_assistant._get_state_history(entity, wider_start, wider_end)
-            print(f"  Wider window history: {wider_history}")
-
-            raise
+        assert len(entries) > 0
+        assert entries[0]["attributes"]["brightness"] == 128
 
     def test_predicate_state(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
         """Test retrospective assertion with predicate function for state."""
