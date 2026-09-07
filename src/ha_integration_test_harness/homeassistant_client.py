@@ -410,17 +410,29 @@ class HomeAssistant:
 
         start_dt, end_dt = self._resolve_time_window(min_time, max_time)
 
-        history = self._get_state_history(entity_id, start_dt, end_dt)
-        if history is None:
-            raise AssertionError(f"Failed to query history for {entity_id} " f"between {min_time} and {max_time} " f"(UTC: {start_dt.isoformat()} to {end_dt.isoformat()})")
+        max_retries = 5
+        retry_delay = 0.5
+        history: Optional[list[dict[str, Any]]] = None
+        matching_entries: list[dict[str, Any]] = []
+
+        for attempt in range(max_retries):
+            history = self._get_state_history(entity_id, start_dt, end_dt)
+            if history is None:
+                raise AssertionError(f"Failed to query history for {entity_id} " f"between {min_time} and {max_time} " f"(UTC: {start_dt.isoformat()} to {end_dt.isoformat()})")
+
+            if history:
+                matching_entries = self._filter_history_entries(history, expected_state, expected_attributes, require_full_duration, start_dt, end_dt)
+                if matching_entries:
+                    break
+
+            if attempt < max_retries - 1:
+                time.sleep(retry_delay)
 
         if not history:
             utc_range = f"(UTC: {start_dt.isoformat()} to {end_dt.isoformat()})"
             if self.get_state(entity_id) is None:
                 raise AssertionError(f"Entity {entity_id} not found in history for the given window " f"between {min_time} and {max_time} {utc_range}")
             raise AssertionError(f"No state changes recorded for {entity_id} " f"between {min_time} and {max_time} {utc_range}")
-
-        matching_entries = self._filter_history_entries(history, expected_state, expected_attributes, require_full_duration, start_dt, end_dt)
 
         if not matching_entries:
             mode_desc = "throughout the entire window" if require_full_duration else "at some point during the window"
@@ -649,29 +661,17 @@ class HomeAssistant:
         url = f"{self._base_url}/api/history/period/{start_time.isoformat()}"
         params = {"filter_entity_id": entity_id, "end": end_time.isoformat()}
         logger.info(f"Querying history for {entity_id}: {url} with params {params}")
-
-        max_retries = 5
-        retry_delay = 0.5
-
-        for attempt in range(max_retries):
-            try:
-                headers = {"Authorization": f"Bearer {self._access_token}"}
-                response = requests.get(url, headers=headers, params=params, timeout=self._timeout)
-                response.raise_for_status()
-                result: list[list[dict[str, Any]]] = response.json()
-                logger.info(f"History API response for {entity_id}: {len(result)} entity groups (attempt {attempt + 1}/{max_retries})")
-                if result and len(result) > 0:
-                    logger.info(f"First entity group has {len(result[0])} entries")
-                    return result[0]
-                logger.info(f"History API returned empty result for {entity_id} (attempt {attempt + 1}/{max_retries})")
-                if attempt < max_retries - 1:
-                    time.sleep(retry_delay)
-            except Exception as e:
-                logger.warning(f"Failed to get state history for {entity_id}: {e}")
-                return None
-
-        logger.info(f"History API returned empty result for {entity_id} after {max_retries} attempts")
-        return []
+        try:
+            headers = {"Authorization": f"Bearer {self._access_token}"}
+            response = requests.get(url, headers=headers, params=params, timeout=self._timeout)
+            response.raise_for_status()
+            result: list[list[dict[str, Any]]] = response.json()
+            if result and len(result) > 0:
+                return result[0]
+            return []
+        except Exception as e:
+            logger.warning(f"Failed to get state history for {entity_id}: {e}")
+            return None
 
     def _build_assertion_diagnostics(self, entity_id: str) -> str:
         if self._test_start_time is None:
