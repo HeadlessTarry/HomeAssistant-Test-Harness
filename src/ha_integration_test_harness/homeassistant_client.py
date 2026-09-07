@@ -436,36 +436,54 @@ class HomeAssistant:
             raise AssertionError(f"No state changes recorded for {entity_id} between {min_time} and {max_time} {utc_range}")
 
         if not matching_entries:
-            mode_desc = "throughout the entire window" if require_full_duration else "at some point during the window"
-            history_snippet = self._format_window_history(history, start_dt)
-
-            if expected_state is None and expected_attributes is not None:
-                attr_keys = ", ".join(sorted(expected_attributes.keys()))
-                error_msg = (
-                    f"Entity {entity_id} did not have expected attributes ({attr_keys}) {mode_desc} "
-                    f"between {min_time} and {max_time} (UTC: {start_dt.isoformat()} to {end_dt.isoformat()}).\n"
-                    f"{history_snippet}"
-                )
-            elif expected_state is not None and expected_attributes is None:
-                state_desc = _PREDICATE_FUNCTION_DESC if callable(expected_state) else f"'{expected_state}'"
-                error_msg = (
-                    f"Entity {entity_id} was not in state {state_desc} {mode_desc} "
-                    f"between {min_time} and {max_time} "
-                    f"(UTC: {start_dt.isoformat()} to {end_dt.isoformat()}).\n"
-                    f"{history_snippet}"
-                )
-            else:
-                state_desc = _PREDICATE_FUNCTION_DESC if callable(expected_state) else f"'{expected_state}'"
-                attr_keys = ", ".join(sorted(expected_attributes.keys())) if expected_attributes else ""
-                error_msg = (
-                    f"Entity {entity_id} was not in state {state_desc} with expected attributes ({attr_keys}) {mode_desc} "
-                    f"between {min_time} and {max_time} (UTC: {start_dt.isoformat()} to {end_dt.isoformat()}).\n"
-                    f"{history_snippet}"
-                )
-
+            error_msg = self._build_assertion_error_message(entity_id, expected_state, expected_attributes, require_full_duration, min_time, max_time, start_dt, end_dt, history)
             raise AssertionError(error_msg)
 
         return matching_entries
+
+    def _build_assertion_error_message(
+        self,
+        entity_id: str,
+        expected_state: str | Callable[[str], bool] | None,
+        expected_attributes: dict[str, Any] | None,
+        require_full_duration: bool,
+        min_time: dt_time,
+        max_time: dt_time,
+        start_dt: datetime,
+        end_dt: datetime,
+        history: list[dict[str, Any]],
+    ) -> str:
+        """Build error message for assertion failure.
+
+        Args:
+            entity_id: The entity ID that was checked.
+            expected_state: Expected state value or predicate.
+            expected_attributes: Expected attributes dict.
+            require_full_duration: Whether full-duration mode was used.
+            min_time: Start of the time window (local time).
+            max_time: End of the time window (local time).
+            start_dt: Start of the time window (UTC).
+            end_dt: End of the time window (UTC).
+            history: History entries for the window.
+
+        Returns:
+            Formatted error message.
+        """
+        mode_desc = "throughout the entire window" if require_full_duration else "at some point during the window"
+        history_snippet = self._format_window_history(history, start_dt)
+        utc_range = f"(UTC: {start_dt.isoformat()} to {end_dt.isoformat()})"
+
+        if expected_state is None and expected_attributes is not None:
+            attr_keys = ", ".join(sorted(expected_attributes.keys()))
+            return f"Entity {entity_id} did not have expected attributes ({attr_keys}) {mode_desc} " f"between {min_time} and {max_time} {utc_range}.\n{history_snippet}"
+
+        state_desc = _PREDICATE_FUNCTION_DESC if callable(expected_state) else f"'{expected_state}'"
+
+        if expected_attributes is None:
+            return f"Entity {entity_id} was not in state {state_desc} {mode_desc} " f"between {min_time} and {max_time} {utc_range}.\n{history_snippet}"
+
+        attr_keys = ", ".join(sorted(expected_attributes.keys()))
+        return f"Entity {entity_id} was not in state {state_desc} with expected attributes ({attr_keys}) {mode_desc} " f"between {min_time} and {max_time} {utc_range}.\n{history_snippet}"
 
     def _resolve_time_window(self, min_time: dt_time, max_time: dt_time) -> tuple[datetime, datetime]:
         """Resolve time-of-day pairs to UTC datetimes using the fake clock's date.
@@ -527,40 +545,84 @@ class HomeAssistant:
         Returns:
             List of matching history entries.
         """
-        matching: list[dict[str, Any]] = []
-
-        for entry in history:
-            current_state = entry.get("state", "")
-            current_attrs = entry.get("attributes", {})
-
-            state_matches = True
-            if expected_state is not None:
-                if callable(expected_state):
-                    state_matches = expected_state(current_state)
-                else:
-                    state_matches = current_state == expected_state
-
-            attrs_match = True
-            if expected_attributes is not None:
-                for attr_name, attr_expected in expected_attributes.items():
-                    attr_actual = current_attrs.get(attr_name)
-                    if callable(attr_expected):
-                        if not attr_expected(attr_actual):
-                            attrs_match = False
-                            break
-                    else:
-                        if attr_actual != attr_expected:
-                            attrs_match = False
-                            break
-
-            if state_matches and attrs_match:
-                matching.append(entry)
+        matching = [entry for entry in history if self._entry_matches_expectations(entry, expected_state, expected_attributes)]
 
         if require_full_duration and matching:
             if not self._check_full_duration(history, matching, start_dt):
                 return []
 
         return matching
+
+    def _entry_matches_expectations(
+        self,
+        entry: dict[str, Any],
+        expected_state: str | Callable[[str], bool] | None,
+        expected_attributes: dict[str, Any] | None,
+    ) -> bool:
+        """Check if a history entry matches expected state and attributes.
+
+        Args:
+            entry: A history entry dict.
+            expected_state: Expected state value or predicate.
+            expected_attributes: Expected attributes dict.
+
+        Returns:
+            True if the entry matches all expectations.
+        """
+        current_state = entry.get("state", "")
+        current_attrs = entry.get("attributes", {})
+
+        state_matches = self._state_matches(current_state, expected_state)
+        attrs_match = self._attributes_match(current_attrs, expected_attributes)
+
+        return state_matches and attrs_match
+
+    def _state_matches(
+        self,
+        current_state: str,
+        expected_state: str | Callable[[str], bool] | None,
+    ) -> bool:
+        """Check if current state matches expected state.
+
+        Args:
+            current_state: The actual state value.
+            expected_state: Expected state value or predicate.
+
+        Returns:
+            True if states match or no expectation was provided.
+        """
+        if expected_state is None:
+            return True
+        if callable(expected_state):
+            return expected_state(current_state)
+        return current_state == expected_state
+
+    def _attributes_match(
+        self,
+        current_attrs: dict[str, Any],
+        expected_attributes: dict[str, Any] | None,
+    ) -> bool:
+        """Check if current attributes match expected attributes.
+
+        Args:
+            current_attrs: The actual attributes dict.
+            expected_attributes: Expected attributes dict.
+
+        Returns:
+            True if all attributes match or no expectations were provided.
+        """
+        if expected_attributes is None:
+            return True
+
+        for attr_name, attr_expected in expected_attributes.items():
+            attr_actual = current_attrs.get(attr_name)
+            if callable(attr_expected):
+                if not attr_expected(attr_actual):
+                    return False
+            elif attr_actual != attr_expected:
+                return False
+
+        return True
 
     def _check_full_duration(
         self,
