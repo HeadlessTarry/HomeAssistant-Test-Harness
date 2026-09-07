@@ -318,3 +318,60 @@ class TestRetrospectiveAssertions:
                 None,
                 between=(time(current_hour, current_minute), time(current_hour, current_minute + 5)),
             )
+
+    def test_future_window_fails(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
+        """Test that a window entirely in the future fails with no history."""
+        current_time = home_assistant.ws_time_get()
+        current_hour = int(current_time["timestamp"][11:13])
+        current_minute = int(current_time["timestamp"][14:16])
+
+        start_hour = current_hour
+        start_minute = current_minute + 30
+        end_hour = start_hour
+        end_minute = start_minute + 10
+        if end_minute >= 60:
+            end_minute -= 60
+            end_hour += 1
+        if start_minute >= 60:
+            start_minute -= 60
+            start_hour += 1
+
+        with pytest.raises(AssertionError, match="No state changes recorded|not found in history"):
+            home_assistant.assert_entity_was_in_state(
+                self.an_entity,
+                "on",
+                between=(time(start_hour, start_minute), time(end_hour, end_minute)),
+            )
+
+    def test_attribute_matching_full_duration(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
+        """Test attribute matching in full-duration mode."""
+        home_assistant.set_state(self.an_entity, "on", {"brightness": 200, "color_temp": 3000})
+
+        current_time = home_assistant.ws_time_get()
+        current_hour = int(current_time["timestamp"][11:13])
+        current_minute = int(current_time["timestamp"][14:16])
+
+        start_hour = current_hour
+        start_minute = current_minute + 1
+        end_minute = current_minute + 3
+        end_hour = start_hour
+        if end_minute >= 60:
+            end_minute -= 60
+            end_hour += 1
+        if start_minute >= 60:
+            start_minute -= 60
+            start_hour += 1
+
+        time_machine.fast_forward(timedelta(minutes=1))
+        time_machine.fast_forward(timedelta(minutes=3))
+
+        entries = home_assistant.assert_entity_was_in_state(
+            self.an_entity,
+            "on",
+            between=(time(start_hour, start_minute), time(end_hour, end_minute)),
+            expected_attributes={"brightness": 200},
+            require_full_duration=True,
+        )
+
+        assert len(entries) > 0
+        assert entries[0]["attributes"]["brightness"] == 200

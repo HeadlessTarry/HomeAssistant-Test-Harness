@@ -352,7 +352,7 @@ class HomeAssistant:
         self,
         entity_id: str,
         expected_state: Union[str, Callable[[str], bool], None] = None,
-        between: tuple[dt_time, dt_time] = None,  # type: ignore[assignment]
+        between: Optional[tuple[dt_time, dt_time]] = None,
         expected_attributes: Optional[dict[str, Any]] = None,
         require_full_duration: bool = False,
     ) -> list[dict[str, Any]]:
@@ -412,10 +412,13 @@ class HomeAssistant:
 
         history = self._get_state_history(entity_id, start_dt, end_dt)
         if history is None:
-            raise AssertionError(f"Failed to query history for {entity_id} between {min_time} and {max_time} " f"(UTC: {start_dt.isoformat()} to {end_dt.isoformat()})")
+            raise AssertionError(f"Failed to query history for {entity_id} " f"between {min_time} and {max_time} " f"(UTC: {start_dt.isoformat()} to {end_dt.isoformat()})")
 
         if not history:
-            raise AssertionError(f"No state changes recorded for {entity_id} between {min_time} and {max_time} " f"(UTC: {start_dt.isoformat()} to {end_dt.isoformat()})")
+            utc_range = f"(UTC: {start_dt.isoformat()} to {end_dt.isoformat()})"
+            if self.get_state(entity_id) is None:
+                raise AssertionError(f"Entity {entity_id} not found in history for the given window " f"between {min_time} and {max_time} {utc_range}")
+            raise AssertionError(f"No state changes recorded for {entity_id} " f"between {min_time} and {max_time} {utc_range}")
 
         matching_entries = self._filter_history_entries(history, expected_state, expected_attributes, require_full_duration, start_dt, end_dt)
 
@@ -433,7 +436,10 @@ class HomeAssistant:
             elif expected_state is not None and expected_attributes is None:
                 state_desc = "predicate function" if callable(expected_state) else f"'{expected_state}'"
                 error_msg = (
-                    f"Entity {entity_id} was not in state {state_desc} {mode_desc} " f"between {min_time} and {max_time} (UTC: {start_dt.isoformat()} to {end_dt.isoformat()}).\n" f"{history_snippet}"
+                    f"Entity {entity_id} was not in state {state_desc} {mode_desc} "
+                    f"between {min_time} and {max_time} "
+                    f"(UTC: {start_dt.isoformat()} to {end_dt.isoformat()}).\n"
+                    f"{history_snippet}"
                 )
             else:
                 state_desc = "predicate function" if callable(expected_state) else f"'{expected_state}'"
@@ -540,7 +546,7 @@ class HomeAssistant:
                 matching.append(entry)
 
         if require_full_duration and matching:
-            if not self._check_full_duration(history, matching, start_dt, end_dt):
+            if not self._check_full_duration(history, matching, start_dt):
                 return []
 
         return matching
@@ -550,15 +556,19 @@ class HomeAssistant:
         history: list[dict[str, Any]],
         matching_entries: list[dict[str, Any]],
         start_dt: datetime,
-        end_dt: datetime,
     ) -> bool:
         """Check if the entity remained in the expected state throughout the entire window.
+
+        Verifies that every history entry in the window matches the expected state/attributes
+        and that the first entry's timestamp is at or before the window start. Under HA's
+        history model, state persists until the next change, so if all entries match and
+        the first covers the window start, the entity remained in the expected state for
+        the full window.
 
         Args:
             history: Full history for the window.
             matching_entries: Entries that match the expected state/attributes.
             start_dt: Start of the time window (UTC).
-            end_dt: End of the time window (UTC).
 
         Returns:
             True if the entity was in the expected state for the entire window.
@@ -566,19 +576,12 @@ class HomeAssistant:
         if not matching_entries:
             return False
 
-        first_match = matching_entries[0]
-        first_match_ts = self._parse_history_timestamp(first_match)
-
-        if first_match_ts > start_dt:
+        if len(matching_entries) != len(history):
             return False
 
-        last_match = matching_entries[-1]
-        last_match_ts = self._parse_history_timestamp(last_match)
-
-        if last_match_ts < end_dt:
-            last_history_ts = self._parse_history_timestamp(history[-1])
-            if last_history_ts < end_dt:
-                return False
+        first_match_ts = self._parse_history_timestamp(matching_entries[0])
+        if first_match_ts > start_dt:
+            return False
 
         return True
 
@@ -590,15 +593,15 @@ class HomeAssistant:
 
         Returns:
             A timezone-aware UTC datetime.
+
+        Raises:
+            ValueError: If the timestamp cannot be parsed.
         """
         ts_str = entry.get("last_changed", entry.get("last_updated", ""))
-        try:
-            ts = datetime.fromisoformat(ts_str)
-            if ts.tzinfo is None:
-                ts = ts.replace(tzinfo=timezone.utc)
-            return ts
-        except Exception:
-            return datetime.now(timezone.utc)
+        ts = datetime.fromisoformat(ts_str)
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        return ts
 
     def _format_window_history(self, history: list[dict[str, Any]], start_dt: datetime) -> str:
         """Format history entries for inclusion in error messages.
@@ -638,14 +641,9 @@ class HomeAssistant:
         return "\n".join(lines)
 
     def _get_state_history(self, entity_id: str, start_time: datetime, end_time: datetime) -> Optional[list[dict[str, Any]]]:
-        from datetime import timezone
-
-        # Ensure timestamps are timezone-aware UTC
         if start_time.tzinfo is None:
-            # Assume naive datetime is local time, convert to UTC
             start_time = start_time.astimezone(timezone.utc)
         if end_time.tzinfo is None:
-            # Assume naive datetime is local time, convert to UTC
             end_time = end_time.astimezone(timezone.utc)
 
         url = f"{self._base_url}/api/history/period/{start_time.isoformat()}"
