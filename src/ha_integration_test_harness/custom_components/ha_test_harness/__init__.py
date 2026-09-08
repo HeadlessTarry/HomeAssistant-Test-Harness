@@ -105,6 +105,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         "platform_ready": platform_ready_events,
         "frozen_entities": set(),  # entity_ids of frozen template entities
         "time_offset": TimeOffset(),  # offset applied to all HA time functions
+        "sun_override": None,  # None = no override; dict = active sun override
     }
 
     for domain in SUPPORTED_DOMAINS:
@@ -113,6 +114,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     _apply_template_monkey_patch(hass)
     _apply_time_monkey_patch(hass)
     _apply_sun_monkey_patch(hass)
+    _apply_sun_helper_patches(hass)
 
     websocket_api.async_register_command(hass, ws_create_entity)
     websocket_api.async_register_command(hass, ws_set_entity_state)
@@ -122,6 +124,8 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     websocket_api.async_register_command(hass, ws_time_set)
     websocket_api.async_register_command(hass, ws_time_advance)
     websocket_api.async_register_command(hass, ws_time_get)
+    websocket_api.async_register_command(hass, ws_sun_override)
+    websocket_api.async_register_command(hass, ws_sun_restore)
 
     hass.services.async_register(
         "ai_task",
@@ -260,8 +264,107 @@ def _unfreeze_sun(hass: HomeAssistant) -> None:
     sun_entity = _get_sun_entity_instance(hass)
     if sun_entity is None:
         return
+    # Force a full recalculation by calling update_location with initial=True
+    # This recalculates all sun attributes including elevation, azimuth, next_rising, next_setting
     sun_entity.update_location(initial=True)
+    # Also force an async_update to ensure the state is written
+    hass.async_create_task(sun_entity.async_update_ha_state(force_refresh=True))
     _LOGGER.info("[ha_test_harness] Restored Sun entity listeners after unfreeze")
+
+
+# Store original sun helper functions before patching
+_original_sun_helpers: dict[str, Any] = {}
+
+
+def _apply_sun_helper_patches(hass: HomeAssistant) -> None:
+    """Monkey-patch sun helper functions to support sun condition overrides.
+
+    Patches homeassistant.helpers.sun.is_up and get_astral_event_next to check
+    for an active sun override before computing astronomical values. Also patches
+    astral.sun.elevation in the sun condition module.
+
+    The override is stored in hass.data[DOMAIN]["sun_override"] and can be set
+    via the ws_sun_override WebSocket command.
+    """
+    try:
+        import astral.sun
+        from homeassistant.components.sun import condition as sun_condition
+        from homeassistant.helpers import sun as sun_helpers
+    except ImportError:
+        _LOGGER.warning("[ha_test_harness] Could not import sun helpers; sun override not available")
+        return
+
+    # Store originals
+    _original_sun_helpers["is_up"] = sun_helpers.is_up
+    _original_sun_helpers["get_astral_event_next"] = sun_helpers.get_astral_event_next
+    _original_sun_helpers["astral_sun_elevation"] = astral.sun.elevation
+
+    domain_data: dict[str, Any] = hass.data[DOMAIN]
+
+    def _patched_is_up(hass_obj: HomeAssistant, utc_point_in_time: datetime | None = None) -> bool:
+        """Check if sun is up, respecting override if active."""
+        override = domain_data.get("sun_override")
+        if override is not None:
+            # Override is active - return the overridden value
+            return bool(override.get("is_up", True))
+        # No override - use original function
+        return bool(_original_sun_helpers["is_up"](hass_obj, utc_point_in_time))
+
+    def _patched_get_astral_event_next(
+        hass_obj: HomeAssistant,
+        event: str,
+        utc_point_in_time: datetime | None = None,
+        offset: timedelta | None = None,
+    ) -> datetime:
+        """Get next astral event, respecting override if active."""
+        override = domain_data.get("sun_override")
+        if override is not None:
+            # Override is active - return a fake time based on the override
+            if utc_point_in_time is None:
+                utc_point_in_time = dt_util.utcnow()
+            # Return a time that makes is_up() return the overridden value
+            # For sunrise: if is_up=True, return past time; if is_up=False, return future time
+            # For sunset: if is_up=True, return future time; if is_up=False, return past time
+            is_up_override = bool(override.get("is_up", True))
+            if event == "sunrise":
+                if is_up_override:
+                    # Sun is up, so sunrise was in the past
+                    return utc_point_in_time - timedelta(hours=6)
+                else:
+                    # Sun is set, so sunrise is in the future
+                    return utc_point_in_time + timedelta(hours=6)
+            elif event == "sunset":
+                if is_up_override:
+                    # Sun is up, so sunset is in the future
+                    return utc_point_in_time + timedelta(hours=6)
+                else:
+                    # Sun is set, so sunset was in the past
+                    return utc_point_in_time - timedelta(hours=6)
+        # No override - use original function
+        from typing import cast
+
+        return cast(datetime, _original_sun_helpers["get_astral_event_next"](hass_obj, event, utc_point_in_time, offset))
+
+    def _patched_astral_sun_elevation(observer: Any, dt: datetime) -> float:
+        """Get sun elevation, respecting override if active."""
+        override = domain_data.get("sun_override")
+        if override is not None and "elevation" in override:
+            return float(override["elevation"])
+        # No override - use original function
+        return float(_original_sun_helpers["astral_sun_elevation"](observer, dt))
+
+    # Apply patches
+    sun_helpers.is_up = _patched_is_up  # type: ignore[assignment]
+    sun_helpers.get_astral_event_next = _patched_get_astral_event_next  # type: ignore[assignment]
+    astral.sun.elevation = _patched_astral_sun_elevation
+
+    # Also patch the imports in sun.condition module
+    if hasattr(sun_condition, "is_up"):
+        sun_condition.is_up = _patched_is_up  # type: ignore[assignment]
+    if hasattr(sun_condition, "get_astral_event_next"):
+        sun_condition.get_astral_event_next = _patched_get_astral_event_next
+
+    _LOGGER.info("[ha_test_harness] Monkey-patched sun helper functions for sun override support")
 
 
 def _get_time_offset(hass: HomeAssistant) -> timedelta:
@@ -737,3 +840,134 @@ async def ws_time_get(hass: HomeAssistant, connection: websocket_api.ActiveConne
             "offset_seconds": offset.total_seconds(),
         },
     )
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "ha_test_harness/sun/override",
+        vol.Optional("state"): str,
+        vol.Optional("elevation"): vol.Coerce(float),
+        vol.Optional("azimuth"): vol.Coerce(float),
+        vol.Optional("attributes"): dict,
+    }
+)
+@websocket_api.async_response
+async def ws_sun_override(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    """Handle ha_test_harness/sun/override WebSocket command.
+
+    Overrides sun conditions to return the specified values. Patches is_up(),
+    get_astral_event_next(), and astral.sun.elevation() to return overridden values.
+    Also sets the sun.sun entity state and attributes.
+
+    Args:
+        state: "above_horizon" or "below_horizon" (optional)
+        elevation: Sun elevation in degrees (optional)
+        azimuth: Sun azimuth in degrees (optional)
+        attributes: Additional attributes to set on sun.sun (optional)
+    """
+    state: str | None = msg.get("state")
+    elevation: float | None = msg.get("elevation")
+    azimuth: float | None = msg.get("azimuth")
+    additional_attrs: dict[str, Any] | None = msg.get("attributes")
+
+    # Build override dict
+    override: dict[str, Any] = {}
+
+    # Determine is_up from state or elevation
+    if state is not None:
+        if state == "above_horizon":
+            override["is_up"] = True
+        elif state == "below_horizon":
+            override["is_up"] = False
+        else:
+            connection.send_error(msg["id"], "invalid_state", f"Invalid state: {state!r}. Must be 'above_horizon' or 'below_horizon'")
+            return
+
+    if elevation is not None:
+        override["elevation"] = elevation
+        # Derive is_up from elevation if not already set
+        if "is_up" not in override:
+            override["is_up"] = elevation > -0.833
+
+    # If only state was provided, set a plausible elevation
+    if state is not None and elevation is None:
+        if state == "above_horizon":
+            override["elevation"] = 15.0
+        else:
+            override["elevation"] = -5.0
+
+    # Store override
+    hass.data[DOMAIN]["sun_override"] = override
+
+    # Freeze sun.sun to prevent it from overwriting our override
+    hass.data[DOMAIN]["frozen_entities"].add(_SUN_ENTITY_ID)
+    _freeze_sun(hass)
+
+    # Set sun.sun entity state
+    sun_state = "above_horizon" if override.get("is_up", True) else "below_horizon"
+    sun_attrs: dict[str, Any] = {}
+    if "elevation" in override:
+        sun_attrs["elevation"] = override["elevation"]
+    if azimuth is not None:
+        sun_attrs["azimuth"] = azimuth
+    else:
+        # Set plausible azimuth based on state
+        sun_attrs["azimuth"] = 180.0 if override.get("is_up", True) else 0.0
+
+    # Set next_rising and next_setting based on is_up
+    now = dt_util.utcnow()
+    if override.get("is_up", True):
+        sun_attrs["next_rising"] = (now - timedelta(hours=6)).isoformat()
+        sun_attrs["next_setting"] = (now + timedelta(hours=6)).isoformat()
+    else:
+        sun_attrs["next_rising"] = (now + timedelta(hours=6)).isoformat()
+        sun_attrs["next_setting"] = (now - timedelta(hours=6)).isoformat()
+
+    # Merge additional attributes (these take precedence)
+    if additional_attrs:
+        sun_attrs.update(additional_attrs)
+
+    # Update sun.sun entity state via REST API
+    hass.states.async_set(_SUN_ENTITY_ID, sun_state, sun_attrs)
+
+    _LOGGER.info("[ha_test_harness] Sun override applied: %s", override)
+
+    await _settle_after_time_change(hass)
+
+    connection.send_result(msg["id"], {"override": override, "state": sun_state})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "ha_test_harness/sun/restore",
+    }
+)
+@websocket_api.async_response
+async def ws_sun_restore(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    """Handle ha_test_harness/sun/restore WebSocket command.
+
+    Clears the sun override and unfreezes sun.sun, allowing it to recalculate
+    from the current fake time.
+    """
+    # Clear override FIRST so patched functions return real values
+    hass.data[DOMAIN]["sun_override"] = None
+
+    # Unfreeze sun.sun FIRST so state writes aren't blocked
+    hass.data[DOMAIN]["frozen_entities"].discard(_SUN_ENTITY_ID)
+    _unfreeze_sun(hass)
+
+    # Get the sun entity and force a full recalculation
+    sun_entity = _get_sun_entity_instance(hass)
+    if sun_entity is not None:
+        # update_location(initial=True) recalculates elevation, azimuth, next_rising, next_setting
+        sun_entity.update_location(initial=True)
+        # Force state write now that we're unfrozen
+        sun_entity.async_write_ha_state()
+
+    _LOGGER.info("[ha_test_harness] Sun override cleared, sun.sun recalculated from fake time")
+
+    # Wait for the state to propagate
+    await asyncio.sleep(0.5)
+    await _settle_after_time_change(hass)
+
+    connection.send_result(msg["id"], {"restored": True})

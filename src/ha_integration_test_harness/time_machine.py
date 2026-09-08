@@ -81,6 +81,7 @@ class TimeMachine:
         on_time_set: Optional[Callable[[], None]] = None,
         get_entity_state: Optional[Callable[[str], Optional[dict[str, Any]]]] = None,
         timezone: Optional[str] = None,
+        override_sun_callback: Optional[Callable[..., dict[str, Any]]] = None,
     ) -> None:
         """Initialize the time machine.
 
@@ -95,6 +96,7 @@ class TimeMachine:
                 When ``None`` (the default), those arguments are treated as UTC.
                 Typically set to the timezone configured in Home Assistant so that test
                 arguments match the HA automations being tested.
+            override_sun_callback: Optional callback to override sun conditions via WebSocket.
 
         Raises:
             ValueError: If ``timezone`` is provided but is not a valid IANA timezone name.
@@ -105,6 +107,7 @@ class TimeMachine:
         self._on_time_set = on_time_set
         self._get_entity_state = get_entity_state
         self._fake_time: Optional[datetime] = None
+        self._override_sun_callback = override_sun_callback
 
         if timezone is not None:
             try:
@@ -560,3 +563,58 @@ class TimeMachine:
             log_message=f"Advanced to {preset_lower} with offset {offset_applied} -> {time_str}",
             error_message_prefix=f"Failed to advance to {preset_lower} at {time_str}",
         )
+
+    def override_sun(
+        self,
+        state: Optional[str] = None,
+        elevation: Optional[float] = None,
+        azimuth: Optional[float] = None,
+    ) -> None:
+        """Override sun conditions for testing.
+
+        Patches the sun helper functions (is_up, get_astral_event_next, astral.sun.elevation)
+        to return the specified values, independent of the actual fake time. Also sets the
+        sun.sun entity state and attributes.
+
+        This is useful for testing automations with sun conditions (sun.is_set, sun.is_up, etc.)
+        at specific times without needing to jump to a date where the sun would naturally be
+        in the desired position.
+
+        Args:
+            state: "above_horizon" or "below_horizon" (optional). If only state is provided,
+                a plausible elevation is set automatically (+15° for above, -5° for below).
+            elevation: Sun elevation in degrees (optional). If only elevation is provided,
+                the state is derived from it (> -0.833° = above_horizon, else below_horizon).
+            azimuth: Sun azimuth in degrees (optional).
+
+        Examples:
+            # Force sun to be set (for testing sun.is_set condition)
+            time_machine.override_sun("below_horizon")
+
+            # Force sun to be up (for testing sun.is_up condition)
+            time_machine.override_sun("above_horizon")
+
+            # Set specific elevation (for testing elevation-based conditions)
+            time_machine.override_sun(elevation=-10.0)
+
+            # Set both state and elevation
+            time_machine.override_sun("below_horizon", elevation=-6.0)
+
+        Raises:
+            ValueError: If override_sun_callback is not configured, or if arguments are invalid.
+        """
+        if self._override_sun_callback is None:
+            raise ValueError("Cannot use override_sun: override_sun_callback not configured in TimeMachine. " "This callback is required to override sun conditions via WebSocket.")
+
+        # Validate arguments
+        if state is None and elevation is None:
+            raise ValueError("At least one of 'state' or 'elevation' must be provided.")
+
+        if state is not None and state not in ("above_horizon", "below_horizon"):
+            raise ValueError(f"Invalid sun state '{state}'. Must be 'above_horizon' or 'below_horizon'.")
+
+        if elevation is not None and (elevation < -90.0 or elevation > 90.0):
+            raise ValueError(f"Invalid elevation '{elevation}'. Must be between -90 and 90 degrees.")
+
+        # Call the callback
+        self._override_sun_callback(state=state, elevation=elevation, azimuth=azimuth)
