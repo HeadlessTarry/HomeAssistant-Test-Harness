@@ -22,6 +22,7 @@ _HEALTH_CHECK_POLL_TIMEOUT = 10
 _HEALTH_CHECK_INITIAL_INTERVAL = 0.1
 _HEALTH_CHECK_MAX_INTERVAL = 1.0
 _PREDICATE_FUNCTION_DESC = "predicate function"
+_SUN_ENTITY_ID = "sun.sun"
 
 # Sentinel object used to distinguish "not provided" from ``None`` in optional parameters.
 # Typed as ``Any`` so mypy accepts it as a default for parameters typed ``Optional[str]``
@@ -117,6 +118,8 @@ class HomeAssistant:
         Routes the state update through WebSocket for entities created via ``given_an_entity()``
         (to preserve entity registry registration), or through REST API for other entities.
 
+        For sun.sun, routes through the sun override mechanism to also override sun conditions.
+
         Args:
             entity_id: The entity ID to update.
             state: The state value to set.
@@ -127,6 +130,14 @@ class HomeAssistant:
             HomeAssistantTimeoutError: If the request times out.
             HomeAssistantClientError: If the request fails.
         """
+        # Special handling for sun.sun - route through sun override
+        if entity_id == _SUN_ENTITY_ID:
+            elevation = attributes.get("elevation") if attributes else None
+            azimuth = attributes.get("azimuth") if attributes else None
+            # Pass all attributes to preserve custom ones like friendly_name
+            self.ws_sun_override(state=state, elevation=elevation, azimuth=azimuth, attributes=attributes)
+            return
+
         if entity_id in self._created_entities:
             payload: dict[str, Any] = {"id": 1, "type": "ha_test_harness/entity/set_state", "entity_id": entity_id, "state": state}
             if attributes is not None:
@@ -1364,7 +1375,9 @@ class HomeAssistant:
         Raises:
             HomeAssistantClientError: If the unfreeze operation fails.
         """
-        if entity_id in self._frozen_entities:
+        if entity_id == _SUN_ENTITY_ID:
+            self.ws_sun_restore()
+        elif entity_id in self._frozen_entities:
             self._unfreeze_entity(entity_id)
 
     def restore_entity_states(self) -> None:
@@ -1379,17 +1392,32 @@ class HomeAssistant:
         Frozen entities are unfrozen before state restoration to allow normal
         self-updating behavior to resume.
 
+        For sun.sun, restores via ws_sun_restore to clear any sun condition overrides
+        and allow the sun to recalculate from the current fake time.
+
         Raises:
             HomeAssistantClientError: If any state restoration fails.
         """
+        errors = []
+
+        # Handle sun.sun specially - restore via sun override mechanism first
+        if _SUN_ENTITY_ID in self._entity_original_state:
+            try:
+                self.ws_sun_restore()
+            except HomeAssistantClientError as e:
+                errors.append(str(e))
+
+        # Unfreeze all other frozen entities (sun.sun is already handled)
         frozen_entities = list(self._frozen_entities)
         self._frozen_entities.clear()
         for entity_id in frozen_entities:
-            self._unfreeze_entity(entity_id)
+            if entity_id != _SUN_ENTITY_ID:  # Already handled above
+                self._unfreeze_entity(entity_id)
 
-        errors = []
-
+        # Restore all other entity states
         for entity_id, original_state in list(self._entity_original_state.items()):
+            if entity_id == _SUN_ENTITY_ID:
+                continue  # Already handled above
             try:
                 if original_state is None:
                     self.remove_entity(entity_id)
@@ -1478,3 +1506,52 @@ class HomeAssistant:
         payload: dict[str, Any] = {"id": 1, "type": "ha_test_harness/time/get"}
         response = self._ws_send_receive(payload)
         return self._ws_extract_result(response, "get time")
+
+    def ws_sun_override(
+        self,
+        state: str | None = None,
+        elevation: float | None = None,
+        azimuth: float | None = None,
+        attributes: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Override sun conditions via WebSocket.
+
+        Args:
+            state: "above_horizon" or "below_horizon" (optional)
+            elevation: Sun elevation in degrees (optional)
+            azimuth: Sun azimuth in degrees (optional)
+            attributes: Additional attributes to set on sun.sun (optional)
+
+        Returns:
+            The result dict with "override" and "state" keys.
+
+        Raises:
+            HomeAssistantClientError: If the WebSocket command fails.
+        """
+        if _SUN_ENTITY_ID not in self._entity_original_state:
+            self._entity_original_state[_SUN_ENTITY_ID] = self.get_state(_SUN_ENTITY_ID)
+
+        payload: dict[str, Any] = {"id": 1, "type": "ha_test_harness/sun/override"}
+        if state is not None:
+            payload["state"] = state
+        if elevation is not None:
+            payload["elevation"] = elevation
+        if azimuth is not None:
+            payload["azimuth"] = azimuth
+        if attributes is not None:
+            payload["attributes"] = attributes
+        response = self._ws_send_receive(payload)
+        return self._ws_extract_result(response, "override sun")
+
+    def ws_sun_restore(self) -> dict[str, Any]:
+        """Restore sun conditions to time-aligned calculation via WebSocket.
+
+        Returns:
+            The result dict with "restored" key.
+
+        Raises:
+            HomeAssistantClientError: If the WebSocket command fails.
+        """
+        payload: dict[str, Any] = {"id": 1, "type": "ha_test_harness/sun/restore"}
+        response = self._ws_send_receive(payload)
+        return self._ws_extract_result(response, "restore sun")

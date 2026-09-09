@@ -195,3 +195,31 @@ automation:
           entity_id: input_text.ai_greeting_result
         data:
           value: "{{ ai_response.data }}"
+
+  # Test automation: turns on light at 18:45 when sun is set.
+  # Used by test_sun_override.py to verify sun condition override works.
+  - id: test_sun_is_set_condition
+    alias: "Test - Sun is set condition"
+    trigger:
+      - platform: time
+        at: "18:45:00"
+    conditions:
+      - condition: sun.is_set
+    action:
+      - action: light.turn_on
+        target:
+          entity_id: light.sun_test_light
+
+  # Test automation: turns on light at 07:00 when sun is up.
+  # Used by test_sun_override.py to verify sun.is_up condition override works.
+  - id: test_sun_is_up_condition
+    alias: "Test - Sun is up condition"
+    trigger:
+      - platform: time
+        at: "07:00:00"
+    conditions:
+      - condition: sun.is_up
+    action:
+      - action: light.turn_on
+        target:
+          entity_id: light.sun_test_light

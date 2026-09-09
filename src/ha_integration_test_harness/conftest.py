@@ -259,6 +259,9 @@ def time_machine(docker: DockerComposeManager, home_assistant: HomeAssistant) ->
         result = home_assistant.ws_time_get()
         return datetime.fromisoformat(result["timestamp"])
 
+    def _override_sun_callback(state: Optional[str] = None, elevation: Optional[float] = None, azimuth: Optional[float] = None) -> dict[str, Any]:
+        return home_assistant.ws_sun_override(state=state, elevation=elevation, azimuth=azimuth)
+
     try:
         return TimeMachine(
             apply_time_change=_apply_time_change,
@@ -266,6 +269,7 @@ def time_machine(docker: DockerComposeManager, home_assistant: HomeAssistant) ->
             get_current_time_ws=_get_current_time_ws,
             get_entity_state=lambda entity_id: home_assistant.get_state(entity_id),
             timezone=timezone_str,
+            override_sun_callback=_override_sun_callback,
         )
     except ValueError as e:
         raise RuntimeError(
