@@ -868,7 +868,10 @@ def _build_sun_attrs(
     sun_attrs: dict[str, Any] = {}
     if "elevation" in override:
         sun_attrs["elevation"] = override["elevation"]
-    sun_attrs["azimuth"] = azimuth if azimuth is not None else (180.0 if is_up else 0.0)
+    if azimuth is not None:
+        sun_attrs["azimuth"] = azimuth
+    else:
+        sun_attrs["azimuth"] = 180.0 if is_up else 0.0
     sun_attrs["next_rising"] = past if is_up else future
     sun_attrs["next_setting"] = future if is_up else past
 
