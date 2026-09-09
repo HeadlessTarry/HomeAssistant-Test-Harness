@@ -1,8 +1,8 @@
 """Example tests demonstrating time_machine.override_sun() for controlling sun conditions.
 
-The sun conditions (sun.is_set, sun.is_up, etc.) compute astronomically from the astral
-library and HA config lat/lon/elevation. They do NOT read the sun.sun entity state.
-override_sun() patches the underlying helpers to force sun conditions to return the
+Sun conditions (sun.is_set, sun.is_up, etc.) within HA are computed astronomically via the
+astral library and HA config lat/lon/elevation. They do NOT necessarily read the `sun.sun`
+entity state. override_sun() patches the underlying helpers to force sun conditions to return the
 desired values, independent of the actual fake time.
 
 Scenarios covered:
@@ -32,7 +32,10 @@ class TestSunOverride:
         home_assistant: HomeAssistant,
         time_machine: TimeMachine,
     ) -> None:
-        """Test that override_sun('below_horizon') makes condition: sun.is_set pass."""
+        """Test that override_sun('below_horizon') makes condition: sun.is_set pass.
+
+        Relies on automation 'test_sun_is_set_condition' in examples/home_assistant/configuration.yaml.
+        """
         home_assistant.given_an_entity(SUN_TEST_LIGHT, "off")
         time_machine.jump_to_next(hour=18, minute=44)
 
@@ -47,7 +50,10 @@ class TestSunOverride:
         home_assistant: HomeAssistant,
         time_machine: TimeMachine,
     ) -> None:
-        """Test that override_sun('above_horizon') makes condition: sun.is_set fail."""
+        """Test that override_sun('above_horizon') makes condition: sun.is_set fail.
+
+        Relies on automation 'test_sun_is_set_condition' in examples/home_assistant/configuration.yaml.
+        """
         home_assistant.given_an_entity(SUN_TEST_LIGHT, "off")
         time_machine.jump_to_next(hour=18, minute=44)
 
@@ -62,7 +68,10 @@ class TestSunOverride:
         home_assistant: HomeAssistant,
         time_machine: TimeMachine,
     ) -> None:
-        """Test that override_sun('above_horizon') makes condition: sun.is_up pass."""
+        """Test that override_sun('above_horizon') makes condition: sun.is_up pass.
+
+        Relies on automation 'test_sun_is_up_condition' in examples/home_assistant/configuration.yaml.
+        """
         home_assistant.given_an_entity(SUN_TEST_LIGHT, "off")
         time_machine.jump_to_next(hour=6, minute=59)
 
@@ -77,7 +86,10 @@ class TestSunOverride:
         home_assistant: HomeAssistant,
         time_machine: TimeMachine,
     ) -> None:
-        """Test that override_sun('below_horizon') makes condition: sun.is_up fail."""
+        """Test that override_sun('below_horizon') makes condition: sun.is_up fail.
+
+        Relies on automation 'test_sun_is_up_condition' in examples/home_assistant/configuration.yaml.
+        """
         home_assistant.given_an_entity(SUN_TEST_LIGHT, "off")
         time_machine.jump_to_next(hour=6, minute=59)
 
@@ -92,7 +104,10 @@ class TestSunOverride:
         home_assistant: HomeAssistant,
         time_machine: TimeMachine,
     ) -> None:
-        """Test that override_sun(elevation=...) works for elevation-based control."""
+        """Test that override_sun(elevation=...) works for elevation-based control.
+
+        Relies on automation 'test_sun_is_set_condition' in examples/home_assistant/configuration.yaml.
+        """
         home_assistant.given_an_entity(SUN_TEST_LIGHT, "off")
         time_machine.jump_to_next(hour=18, minute=44)
 
@@ -110,10 +125,7 @@ class TestSunOverride:
         """Test that override_sun sets sun.sun entity state and plausible attributes."""
         time_machine.override_sun("below_horizon")
 
-        sun_state = home_assistant.get_state("sun.sun")
-        assert sun_state["state"] == "below_horizon"
-        assert "elevation" in sun_state["attributes"]
-        assert sun_state["attributes"]["elevation"] < 0
+        home_assistant.assert_entity_state("sun.sun", "below_horizon", expected_attributes={"elevation": lambda x: x < 0})
 
     def test_override_sun_with_elevation_sets_entity_state(
         self,
@@ -123,16 +135,17 @@ class TestSunOverride:
         """Test that override_sun(elevation=...) derives entity state from elevation."""
         time_machine.override_sun(elevation=-5.0)
 
-        sun_state = home_assistant.get_state("sun.sun")
-        assert sun_state["state"] == "below_horizon"
-        assert sun_state["attributes"]["elevation"] == -5.0
+        home_assistant.assert_entity_state("sun.sun", "below_horizon", expected_attributes={"elevation": -5.0})
 
     def test_set_state_sun_sun_auto_overrides_conditions(
         self,
         home_assistant: HomeAssistant,
         time_machine: TimeMachine,
     ) -> None:
-        """Test that set_state('sun.sun', ...) auto-overrides conditions."""
+        """Test that set_state('sun.sun', ...) auto-overrides conditions.
+
+        Relies on automation 'test_sun_is_set_condition' in examples/home_assistant/configuration.yaml.
+        """
         home_assistant.given_an_entity(SUN_TEST_LIGHT, "off")
         time_machine.jump_to_next(hour=18, minute=44)
 
@@ -147,7 +160,10 @@ class TestSunOverride:
         home_assistant: HomeAssistant,
         time_machine: TimeMachine,
     ) -> None:
-        """Test that multiple override_sun calls use the last value (transition sim)."""
+        """Test that multiple override_sun calls use the last value (transition sim).
+
+        Relies on automation 'test_sun_is_set_condition' in examples/home_assistant/configuration.yaml.
+        """
         home_assistant.given_an_entity(SUN_TEST_LIGHT, "off")
         time_machine.jump_to_next(hour=18, minute=43)
 
