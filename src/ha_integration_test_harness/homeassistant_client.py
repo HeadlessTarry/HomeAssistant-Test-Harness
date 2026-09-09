@@ -22,6 +22,7 @@ _HEALTH_CHECK_POLL_TIMEOUT = 10
 _HEALTH_CHECK_INITIAL_INTERVAL = 0.1
 _HEALTH_CHECK_MAX_INTERVAL = 1.0
 _PREDICATE_FUNCTION_DESC = "predicate function"
+_SUN_ENTITY_ID = "sun.sun"
 
 # Sentinel object used to distinguish "not provided" from ``None`` in optional parameters.
 # Typed as ``Any`` so mypy accepts it as a default for parameters typed ``Optional[str]``
@@ -130,7 +131,7 @@ class HomeAssistant:
             HomeAssistantClientError: If the request fails.
         """
         # Special handling for sun.sun - route through sun override
-        if entity_id == "sun.sun":
+        if entity_id == _SUN_ENTITY_ID:
             elevation = attributes.get("elevation") if attributes else None
             azimuth = attributes.get("azimuth") if attributes else None
             # Pass all attributes to preserve custom ones like friendly_name
@@ -1374,7 +1375,7 @@ class HomeAssistant:
         Raises:
             HomeAssistantClientError: If the unfreeze operation fails.
         """
-        if entity_id == "sun.sun":
+        if entity_id == _SUN_ENTITY_ID:
             self.ws_sun_restore()
         elif entity_id in self._frozen_entities:
             self._unfreeze_entity(entity_id)
@@ -1400,7 +1401,7 @@ class HomeAssistant:
         errors = []
 
         # Handle sun.sun specially - restore via sun override mechanism first
-        if "sun.sun" in self._entity_original_state:
+        if _SUN_ENTITY_ID in self._entity_original_state:
             try:
                 self.ws_sun_restore()
             except HomeAssistantClientError as e:
@@ -1410,12 +1411,12 @@ class HomeAssistant:
         frozen_entities = list(self._frozen_entities)
         self._frozen_entities.clear()
         for entity_id in frozen_entities:
-            if entity_id != "sun.sun":  # Already handled above
+            if entity_id != _SUN_ENTITY_ID:  # Already handled above
                 self._unfreeze_entity(entity_id)
 
         # Restore all other entity states
         for entity_id, original_state in list(self._entity_original_state.items()):
-            if entity_id == "sun.sun":
+            if entity_id == _SUN_ENTITY_ID:
                 continue  # Already handled above
             try:
                 if original_state is None:
@@ -1527,8 +1528,8 @@ class HomeAssistant:
         Raises:
             HomeAssistantClientError: If the WebSocket command fails.
         """
-        if "sun.sun" not in self._entity_original_state:
-            self._entity_original_state["sun.sun"] = self.get_state("sun.sun")
+        if _SUN_ENTITY_ID not in self._entity_original_state:
+            self._entity_original_state[_SUN_ENTITY_ID] = self.get_state(_SUN_ENTITY_ID)
 
         payload: dict[str, Any] = {"id": 1, "type": "ha_test_harness/sun/override"}
         if state is not None:

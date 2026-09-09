@@ -276,6 +276,13 @@ def _unfreeze_sun(hass: HomeAssistant) -> None:
 _original_sun_helpers: dict[str, Any] = {}
 
 
+def _compute_overridden_astral_event(override: dict[str, Any], event: str, utc_point_in_time: datetime) -> datetime:
+    """Compute a fake astral event time based on the active sun override."""
+    is_up = bool(override.get("is_up", True))
+    is_future = (event == "sunset") == is_up
+    return utc_point_in_time + timedelta(hours=6) if is_future else utc_point_in_time - timedelta(hours=6)
+
+
 def _apply_sun_helper_patches(hass: HomeAssistant) -> None:
     """Monkey-patch sun helper functions to support sun condition overrides.
 
@@ -319,28 +326,9 @@ def _apply_sun_helper_patches(hass: HomeAssistant) -> None:
         """Get next astral event, respecting override if active."""
         override = domain_data.get("sun_override")
         if override is not None:
-            # Override is active - return a fake time based on the override
             if utc_point_in_time is None:
                 utc_point_in_time = dt_util.utcnow()
-            # Return a time that makes is_up() return the overridden value
-            # For sunrise: if is_up=True, return past time; if is_up=False, return future time
-            # For sunset: if is_up=True, return future time; if is_up=False, return past time
-            is_up_override = bool(override.get("is_up", True))
-            if event == "sunrise":
-                if is_up_override:
-                    # Sun is up, so sunrise was in the past
-                    return utc_point_in_time - timedelta(hours=6)
-                else:
-                    # Sun is set, so sunrise is in the future
-                    return utc_point_in_time + timedelta(hours=6)
-            elif event == "sunset":
-                if is_up_override:
-                    # Sun is up, so sunset is in the future
-                    return utc_point_in_time + timedelta(hours=6)
-                else:
-                    # Sun is set, so sunset was in the past
-                    return utc_point_in_time - timedelta(hours=6)
-        # No override - use original function
+            return _compute_overridden_astral_event(override, event, utc_point_in_time)
         from typing import cast
 
         return cast(datetime, _original_sun_helpers["get_astral_event_next"](hass_obj, event, utc_point_in_time, offset))
@@ -842,6 +830,54 @@ async def ws_time_get(hass: HomeAssistant, connection: websocket_api.ActiveConne
     )
 
 
+_STATE_TO_IS_UP = {"above_horizon": True, "below_horizon": False}
+_STATE_TO_DEFAULT_ELEVATION = {"above_horizon": 15.0, "below_horizon": -5.0}
+
+
+def _build_sun_override(state: str | None, elevation: float | None) -> tuple[dict[str, Any], str | None]:
+    """Build sun override dict from state and elevation parameters."""
+    override: dict[str, Any] = {}
+
+    if state is not None:
+        if state not in _STATE_TO_IS_UP:
+            return {}, f"Invalid state: {state!r}. Must be 'above_horizon' or 'below_horizon'"
+        override["is_up"] = _STATE_TO_IS_UP[state]
+
+    if elevation is not None:
+        override["elevation"] = elevation
+        if "is_up" not in override:
+            override["is_up"] = elevation > -0.833
+
+    if state is not None and elevation is None:
+        override["elevation"] = _STATE_TO_DEFAULT_ELEVATION[state]
+
+    return override, None
+
+
+def _build_sun_attrs(
+    override: dict[str, Any],
+    azimuth: float | None,
+    additional_attrs: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Build sun entity attributes from override dict."""
+    is_up = override.get("is_up", True)
+    now = dt_util.utcnow()
+    past = (now - timedelta(hours=6)).isoformat()
+    future = (now + timedelta(hours=6)).isoformat()
+
+    sun_attrs: dict[str, Any] = {}
+    if "elevation" in override:
+        sun_attrs["elevation"] = override["elevation"]
+    sun_attrs["azimuth"] = azimuth if azimuth is not None else (180.0 if is_up else 0.0)
+    sun_attrs["next_rising"] = past if is_up else future
+    sun_attrs["next_setting"] = future if is_up else past
+
+    if additional_attrs:
+        sun_attrs.update(additional_attrs)
+
+    return sun_attrs
+
+
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "ha_test_harness/sun/override",
@@ -870,31 +906,10 @@ async def ws_sun_override(hass: HomeAssistant, connection: websocket_api.ActiveC
     azimuth: float | None = msg.get("azimuth")
     additional_attrs: dict[str, Any] | None = msg.get("attributes")
 
-    # Build override dict
-    override: dict[str, Any] = {}
-
-    # Determine is_up from state or elevation
-    if state is not None:
-        if state == "above_horizon":
-            override["is_up"] = True
-        elif state == "below_horizon":
-            override["is_up"] = False
-        else:
-            connection.send_error(msg["id"], "invalid_state", f"Invalid state: {state!r}. Must be 'above_horizon' or 'below_horizon'")
-            return
-
-    if elevation is not None:
-        override["elevation"] = elevation
-        # Derive is_up from elevation if not already set
-        if "is_up" not in override:
-            override["is_up"] = elevation > -0.833
-
-    # If only state was provided, set a plausible elevation
-    if state is not None and elevation is None:
-        if state == "above_horizon":
-            override["elevation"] = 15.0
-        else:
-            override["elevation"] = -5.0
+    override, error = _build_sun_override(state, elevation)
+    if error is not None:
+        connection.send_error(msg["id"], "invalid_state", error)
+        return
 
     # Store override
     hass.data[DOMAIN]["sun_override"] = override
@@ -905,27 +920,7 @@ async def ws_sun_override(hass: HomeAssistant, connection: websocket_api.ActiveC
 
     # Set sun.sun entity state
     sun_state = "above_horizon" if override.get("is_up", True) else "below_horizon"
-    sun_attrs: dict[str, Any] = {}
-    if "elevation" in override:
-        sun_attrs["elevation"] = override["elevation"]
-    if azimuth is not None:
-        sun_attrs["azimuth"] = azimuth
-    else:
-        # Set plausible azimuth based on state
-        sun_attrs["azimuth"] = 180.0 if override.get("is_up", True) else 0.0
-
-    # Set next_rising and next_setting based on is_up
-    now = dt_util.utcnow()
-    if override.get("is_up", True):
-        sun_attrs["next_rising"] = (now - timedelta(hours=6)).isoformat()
-        sun_attrs["next_setting"] = (now + timedelta(hours=6)).isoformat()
-    else:
-        sun_attrs["next_rising"] = (now + timedelta(hours=6)).isoformat()
-        sun_attrs["next_setting"] = (now - timedelta(hours=6)).isoformat()
-
-    # Merge additional attributes (these take precedence)
-    if additional_attrs:
-        sun_attrs.update(additional_attrs)
+    sun_attrs = _build_sun_attrs(override, azimuth, additional_attrs)
 
     # Update sun.sun entity state via REST API
     hass.states.async_set(_SUN_ENTITY_ID, sun_state, sun_attrs)

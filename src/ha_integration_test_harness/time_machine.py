@@ -604,7 +604,7 @@ class TimeMachine:
             ValueError: If override_sun_callback is not configured, or if arguments are invalid.
         """
         if self._override_sun_callback is None:
-            raise ValueError("Cannot use override_sun: override_sun_callback not configured in TimeMachine. " "This callback is required to override sun conditions via WebSocket.")
+            raise ValueError("Cannot use override_sun: override_sun_callback not configured in TimeMachine. This callback is required to override sun conditions via WebSocket.")
 
         # Validate arguments
         if state is None and elevation is None:
