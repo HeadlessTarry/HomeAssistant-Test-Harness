@@ -13,8 +13,6 @@ Scenarios covered:
 
 from datetime import timedelta
 
-import pytest
-
 from ha_integration_test_harness import HomeAssistant, TimeMachine
 
 
@@ -46,7 +44,6 @@ class TestSunEntityFreeze:
             {"friendly_name": "Test Sun"},
         )
 
-    @pytest.mark.skip(reason="Sun entity recalculation after unfreeze needs further investigation")
     def test_restore_unfreezes_sun_entity(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
         """Test that restore() unfreezes sun.sun, restoring original state."""
         sun_entity = "sun.sun"

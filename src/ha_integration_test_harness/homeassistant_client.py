@@ -1374,7 +1374,9 @@ class HomeAssistant:
         Raises:
             HomeAssistantClientError: If the unfreeze operation fails.
         """
-        if entity_id in self._frozen_entities:
+        if entity_id == "sun.sun":
+            self.ws_sun_restore()
+        elif entity_id in self._frozen_entities:
             self._unfreeze_entity(entity_id)
 
     def restore_entity_states(self) -> None:
@@ -1525,6 +1527,9 @@ class HomeAssistant:
         Raises:
             HomeAssistantClientError: If the WebSocket command fails.
         """
+        if "sun.sun" not in self._entity_original_state:
+            self._entity_original_state["sun.sun"] = self.get_state("sun.sun")
+
         payload: dict[str, Any] = {"id": 1, "type": "ha_test_harness/sun/override"}
         if state is not None:
             payload["state"] = state
