@@ -1,7 +1,8 @@
 """Example tests demonstrating retrospective time-window assertions."""
 
 import time as time_module
-from datetime import time, timedelta
+from datetime import datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -12,6 +13,20 @@ def _add_minutes(hour: int, minute: int, minutes_to_add: int) -> tuple[int, int]
     """Add minutes to a time, handling overflow."""
     total_minutes = hour * 60 + minute + minutes_to_add
     return (total_minutes // 60) % 24, total_minutes % 60
+
+
+def _get_current_local_hour_minute(home_assistant: HomeAssistant) -> tuple[int, int]:
+    """Get the current local hour and minute from the fake clock.
+
+    Converts the UTC timestamp from ws_time_get() to local time using the
+    HA-configured timezone.
+    """
+    current_time_ws = home_assistant.ws_time_get()
+    current_utc = datetime.fromisoformat(current_time_ws["timestamp"])
+    ha_config = home_assistant.get_config()
+    local_tz = ZoneInfo(ha_config.get("time_zone", "UTC"))
+    current_local = current_utc.astimezone(local_tz)
+    return current_local.hour, current_local.minute
 
 
 class TestRetrospectiveAssertions:
@@ -27,9 +42,7 @@ class TestRetrospectiveAssertions:
     def test_transition_mode_basic(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
         """Test transition mode: entity entered expected state during window."""
         # Record current time
-        current_time = home_assistant.ws_time_get()
-        current_hour = current_time["timestamp"][11:13]
-        current_minute = current_time["timestamp"][14:16]
+        current_hour, current_minute = _get_current_local_hour_minute(home_assistant)
 
         # Set up a time window in the past
         start_hour = int(current_hour) - 1 if int(current_hour) > 0 else 23
@@ -59,9 +72,7 @@ class TestRetrospectiveAssertions:
         entity = "sensor.full_duration_test"
         home_assistant.given_an_entity(entity, state="off")
 
-        current_time = home_assistant.ws_time_get()
-        current_hour = int(current_time["timestamp"][11:13])
-        current_minute = int(current_time["timestamp"][14:16])
+        current_hour, current_minute = _get_current_local_hour_minute(home_assistant)
 
         start_hour, start_minute = current_hour, current_minute
         end_hour, end_minute = _add_minutes(current_hour, current_minute, 3)
@@ -82,9 +93,7 @@ class TestRetrospectiveAssertions:
         entity = "sensor.attr_match_test"
         home_assistant.given_an_entity(entity, state="off")
 
-        current_time = home_assistant.ws_time_get()
-        current_hour = int(current_time["timestamp"][11:13])
-        current_minute = int(current_time["timestamp"][14:16])
+        current_hour, current_minute = _get_current_local_hour_minute(home_assistant)
 
         start_hour, start_minute = current_hour, current_minute
         end_hour, end_minute = _add_minutes(current_hour, current_minute, 3)
@@ -104,9 +113,7 @@ class TestRetrospectiveAssertions:
 
     def test_predicate_state(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
         """Test retrospective assertion with predicate function for state."""
-        current_time = home_assistant.ws_time_get()
-        current_hour = int(current_time["timestamp"][11:13])
-        current_minute = int(current_time["timestamp"][14:16])
+        current_hour, current_minute = _get_current_local_hour_minute(home_assistant)
 
         start_hour, start_minute = _add_minutes(current_hour, current_minute, 1)
         end_hour, end_minute = _add_minutes(current_hour, current_minute, 3)
@@ -128,9 +135,7 @@ class TestRetrospectiveAssertions:
 
     def test_predicate_attribute(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
         """Test retrospective assertion with predicate function for attributes."""
-        current_time = home_assistant.ws_time_get()
-        current_hour = int(current_time["timestamp"][11:13])
-        current_minute = int(current_time["timestamp"][14:16])
+        current_hour, current_minute = _get_current_local_hour_minute(home_assistant)
 
         start_hour, start_minute = _add_minutes(current_hour, current_minute, 1)
         end_hour, end_minute = _add_minutes(current_hour, current_minute, 3)
@@ -155,9 +160,7 @@ class TestRetrospectiveAssertions:
         """Test retrospective assertion with attribute-only check (no state check)."""
         home_assistant.set_state(self.an_entity, "on", {"brightness": 100})
 
-        current_time = home_assistant.ws_time_get()
-        current_hour = int(current_time["timestamp"][11:13])
-        current_minute = int(current_time["timestamp"][14:16])
+        current_hour, current_minute = _get_current_local_hour_minute(home_assistant)
 
         start_hour, start_minute = _add_minutes(current_hour, current_minute, 1)
         end_hour, end_minute = _add_minutes(current_hour, current_minute, 3)
@@ -180,9 +183,7 @@ class TestRetrospectiveAssertions:
         home_assistant.given_an_entity(fresh_entity, state="initial")
 
         # Record current time
-        current_time = home_assistant.ws_time_get()
-        current_hour = int(current_time["timestamp"][11:13])
-        current_minute = int(current_time["timestamp"][14:16])
+        current_hour, current_minute = _get_current_local_hour_minute(home_assistant)
 
         # Define a window in the far past (before the entity was created)
         start_hour = (current_hour - 5) % 24
@@ -205,10 +206,7 @@ class TestRetrospectiveAssertions:
         """Test that assertion fails when state doesn't match."""
         home_assistant.set_state(self.an_entity, "off")
 
-        current_time = home_assistant.ws_time_get()
-        current_hour = int(current_time["timestamp"][11:13])
-        current_minute = int(current_time["timestamp"][14:16])
-
+        current_hour, current_minute = _get_current_local_hour_minute(home_assistant)
         start_hour, start_minute = current_hour, current_minute
         end_hour, end_minute = _add_minutes(current_hour, current_minute, 2)
 
@@ -225,9 +223,7 @@ class TestRetrospectiveAssertions:
         """Test that full-duration assertion fails when state changes during window."""
         home_assistant.set_state(self.an_entity, "on")
 
-        current_time = home_assistant.ws_time_get()
-        current_hour = int(current_time["timestamp"][11:13])
-        current_minute = int(current_time["timestamp"][14:16])
+        current_hour, current_minute = _get_current_local_hour_minute(home_assistant)
 
         start_hour, start_minute = current_hour, current_minute
         end_hour, end_minute = _add_minutes(current_hour, current_minute, 5)
@@ -264,9 +260,7 @@ class TestRetrospectiveAssertions:
 
     def test_no_expected_state_or_attributes_raises(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
         """Test that missing both expected_state and expected_attributes raises ValueError."""
-        current_time = home_assistant.ws_time_get()
-        current_hour = int(current_time["timestamp"][11:13])
-        current_minute = int(current_time["timestamp"][14:16])
+        current_hour, current_minute = _get_current_local_hour_minute(home_assistant)
 
         end_hour, end_minute = _add_minutes(current_hour, current_minute, 5)
 
@@ -279,9 +273,7 @@ class TestRetrospectiveAssertions:
 
     def test_future_window_fails(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
         """Test that a window entirely in the future fails with no history."""
-        current_time = home_assistant.ws_time_get()
-        current_hour = int(current_time["timestamp"][11:13])
-        current_minute = int(current_time["timestamp"][14:16])
+        current_hour, current_minute = _get_current_local_hour_minute(home_assistant)
 
         start_hour, start_minute = _add_minutes(current_hour, current_minute, 30)
         end_hour, end_minute = _add_minutes(start_hour, start_minute, 10)
@@ -297,9 +289,7 @@ class TestRetrospectiveAssertions:
         """Test attribute matching in full-duration mode."""
         home_assistant.set_state(self.an_entity, "on", {"brightness": 200, "color_temp": 3000})
 
-        current_time = home_assistant.ws_time_get()
-        current_hour = int(current_time["timestamp"][11:13])
-        current_minute = int(current_time["timestamp"][14:16])
+        current_hour, current_minute = _get_current_local_hour_minute(home_assistant)
 
         start_hour, start_minute = _add_minutes(current_hour, current_minute, 1)
         end_hour, end_minute = _add_minutes(current_hour, current_minute, 3)
@@ -326,9 +316,7 @@ class TestRetrospectiveAssertions:
         entity = "sensor.async_sleep_test"
         home_assistant.given_an_entity(entity, state="off")
 
-        current_time = home_assistant.ws_time_get()
-        current_hour = int(current_time["timestamp"][11:13])
-        current_minute = int(current_time["timestamp"][14:16])
+        current_hour, current_minute = _get_current_local_hour_minute(home_assistant)
 
         start_hour, start_minute = current_hour, current_minute
         end_hour, end_minute = _add_minutes(current_hour, current_minute, 3)
@@ -358,9 +346,7 @@ class TestRetrospectiveAssertions:
         entity = "sensor.retry_test"
         home_assistant.given_an_entity(entity, state="off")
 
-        current_time = home_assistant.ws_time_get()
-        current_hour = int(current_time["timestamp"][11:13])
-        current_minute = int(current_time["timestamp"][14:16])
+        current_hour, current_minute = _get_current_local_hour_minute(home_assistant)
 
         start_hour, start_minute = current_hour, current_minute
         end_hour, end_minute = _add_minutes(current_hour, current_minute, 3)
@@ -397,3 +383,39 @@ class TestRetrospectiveAssertions:
         )
 
         assert len(entries) > 0
+
+    def test_between_times_are_local_not_utc(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
+        """Test that between times are interpreted as local times, not UTC.
+
+        Regression test for issue #199: assert_entity_was_in_state treats between
+        times as UTC instead of local time, causing seasonal breakage during DST.
+
+        This test sets the fake clock to 18:00 BST (17:00 UTC) on September 12, 2026,
+        then verifies that between=(17:55, 18:05) is interpreted as local times
+        (17:55-18:05 BST = 16:55-17:05 UTC), not UTC times.
+        """
+        entity = "sensor.timezone_test"
+        home_assistant.given_an_entity(entity, state="off")
+
+        # Set fake clock to September 12, 2026 at 18:00 BST (17:00 UTC)
+        # Europe/London is UTC+1 during BST (late March to late October)
+        time_machine.jump_to_next(month="Sep", day_of_month=12, hour=18, minute=0, second=0)
+
+        # Change state at 18:00 local time (17:00 UTC)
+        home_assistant.set_state(entity, "on")
+
+        # Advance time by 10 minutes (to 18:10 BST = 17:10 UTC)
+        time_machine.fast_forward(timedelta(minutes=10))
+
+        # Assert the entity was "on" between 17:55 and 18:05 local time
+        # This should succeed because the state change happened at 18:00 local time
+        # If the bug exists, this will fail because it will look for the state change
+        # between 17:55-18:05 UTC (18:55-19:05 BST), which is in the future
+        entries = home_assistant.assert_entity_was_in_state(
+            entity,
+            "on",
+            between=(time(17, 55), time(18, 5)),
+        )
+
+        assert len(entries) > 0
+        assert entries[0]["state"] == "on"
