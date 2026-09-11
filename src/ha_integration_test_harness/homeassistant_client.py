@@ -626,7 +626,7 @@ class HomeAssistant:
         matching = [entry for entry in history if self._entry_matches_expectations(entry, expected_state, expected_attributes)]
 
         if require_full_duration and matching:
-            if not self._check_full_duration(history, matching, start_dt):
+            if not self._check_full_duration(history, matching):
                 return []
 
         return matching
@@ -706,7 +706,6 @@ class HomeAssistant:
         self,
         history: list[dict[str, Any]],
         matching_entries: list[dict[str, Any]],
-        start_dt: datetime,
     ) -> bool:
         """Check if the entity remained in the expected state throughout the entire window.
 
@@ -718,7 +717,6 @@ class HomeAssistant:
         Args:
             history: Full history for the window.
             matching_entries: Entries that match the expected state/attributes.
-            start_dt: Start of the time window (UTC).
 
         Returns:
             True if the entity was in the expected state for the entire window.
