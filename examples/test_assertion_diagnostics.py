@@ -161,3 +161,110 @@ class TestAssertionDiagnosticsIntegration:
     def test_no_diagnostics_for_entity_not_found(self, home_assistant: HomeAssistant) -> None:
         with pytest.raises(AssertionError, match="not found"):
             home_assistant.assert_entity_state("sensor.nonexistent_entity_xyz", "on", timeout=2)
+
+
+class TestTimezoneAwareTimestamps:
+
+    def _make_client(self) -> HomeAssistant:
+        return HomeAssistant("http://localhost:8123", "test-token")
+
+    def test_utc_timestamp_without_timezone_shows_utc(self) -> None:
+        client = self._make_client()
+        test_start = datetime(2026, 9, 10, 17, 30, 0)
+        history = [
+            {
+                "entity_id": "sensor.temp",
+                "state": "25.0",
+                "attributes": {},
+                "last_changed": "2026-09-10T17:30:08+00:00",
+                "last_updated": "2026-09-10T17:30:08+00:00",
+            }
+        ]
+        result = client._format_state_history(history, test_start)
+        assert "17:30:08" in result
+
+    def test_utc_timestamp_with_london_timezone_shows_local_time(self) -> None:
+        client = self._make_client()
+        client.set_timezone("Europe/London")
+        test_start = datetime(2026, 9, 10, 17, 30, 0)
+        history = [
+            {
+                "entity_id": "sensor.temp",
+                "state": "25.0",
+                "attributes": {},
+                "last_changed": "2026-09-10T17:30:08+00:00",
+                "last_updated": "2026-09-10T17:30:08+00:00",
+            }
+        ]
+        result = client._format_state_history(history, test_start)
+        assert "18:30:08" in result
+
+    def test_utc_timestamp_with_new_york_timezone_shows_local_time(self) -> None:
+        client = self._make_client()
+        client.set_timezone("America/New_York")
+        test_start = datetime(2026, 9, 10, 17, 30, 0)
+        history = [
+            {
+                "entity_id": "sensor.temp",
+                "state": "25.0",
+                "attributes": {},
+                "last_changed": "2026-09-10T17:30:08+00:00",
+                "last_updated": "2026-09-10T17:30:08+00:00",
+            }
+        ]
+        result = client._format_state_history(history, test_start)
+        assert "13:30:08" in result
+
+    def test_relative_time_unaffected_by_timezone(self) -> None:
+        client = self._make_client()
+        client.set_timezone("Europe/London")
+        test_start = datetime(2026, 9, 10, 17, 30, 0)
+        history = [
+            {
+                "entity_id": "sensor.temp",
+                "state": "25.0",
+                "attributes": {},
+                "last_changed": "2026-09-10T17:30:08+00:00",
+                "last_updated": "2026-09-10T17:30:08+00:00",
+            }
+        ]
+        result = client._format_state_history(history, test_start)
+        assert "+8.0s" in result
+
+    def test_set_timezone_none_uses_utc(self) -> None:
+        client = self._make_client()
+        client.set_timezone("Europe/London")
+        client.set_timezone(None)
+        test_start = datetime(2026, 9, 10, 17, 30, 0)
+        history = [
+            {
+                "entity_id": "sensor.temp",
+                "state": "25.0",
+                "attributes": {},
+                "last_changed": "2026-09-10T17:30:08+00:00",
+                "last_updated": "2026-09-10T17:30:08+00:00",
+            }
+        ]
+        result = client._format_state_history(history, test_start)
+        assert "17:30:08" in result
+
+    def test_set_timezone_invalid_raises_value_error(self) -> None:
+        client = self._make_client()
+        with pytest.raises(ValueError, match="Invalid timezone"):
+            client.set_timezone("Invalid/Timezone")
+
+    def test_dst_handling_bst(self) -> None:
+        client = self._make_client()
+        client.set_timezone("Europe/London")
+        test_start = datetime(2026, 1, 15, 12, 0, 0)
+        history = [
+            {
+                "entity_id": "sensor.temp",
+                "state": "25.0",
+                "attributes": {},
+                "last_changed": "2026-01-15T12:00:08+00:00",
+                "last_updated": "2026-01-15T12:00:08+00:00",
+            }
+        ]
+        result = client._format_state_history(history, test_start)
+        assert "12:00:08" in result
