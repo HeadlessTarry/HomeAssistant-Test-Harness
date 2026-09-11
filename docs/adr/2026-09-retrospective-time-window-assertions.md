@@ -56,7 +56,10 @@ Support two assertion modes via a `require_full_duration` flag:
 
 ### Time window resolution: `datetime.time` pairs relative to fake clock
 
-Accept `between` as a tuple of `datetime.time` objects (not `datetime.datetime`), resolved to UTC datetimes using the fake clock's date (or real UTC if no fake time is set).
+Accept `between` as a tuple of `datetime.time` objects (not `datetime.datetime`),
+interpreted as local times in the timezone configured in Home Assistant, then
+resolved to UTC datetimes using the fake clock's date (or real UTC if no fake
+time is set).
 
 **Alternatives considered:**
 
