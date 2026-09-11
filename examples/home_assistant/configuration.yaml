@@ -223,3 +223,17 @@ automation:
       - action: light.turn_on
         target:
           entity_id: light.sun_test_light
+
+  # Regression cover for issue #198: a time trigger followed by a delay action.
+  # Tests that a single large fast_forward advances both the trigger and the delay.
+  - id: delay_bug_test
+    alias: "Delay bug test - time trigger with delay"
+    mode: single
+    triggers:
+      - trigger: time
+        at: "18:45:00"
+    actions:
+      - delay: "00:05:00"
+      - action: light.turn_on
+        target:
+          entity_id: light.delay_bug_test_light

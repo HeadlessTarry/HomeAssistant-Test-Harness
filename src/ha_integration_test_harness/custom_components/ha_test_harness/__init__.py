@@ -771,7 +771,8 @@ async def ws_time_set(hass: HomeAssistant, connection: websocket_api.ActiveConne
 
     _LOGGER.info("[ha_test_harness] Time set to %s (offset: %s)", target_dt.isoformat(), offset)
 
-    _advance_scheduled_timers(hass, (offset - previous_offset).total_seconds())
+    delta_seconds = (offset - previous_offset).total_seconds()
+    _advance_scheduled_timers(hass, delta_seconds)
     await _settle_after_time_change(hass)
 
     connection.send_result(msg["id"], {"timestamp": target_dt.isoformat(), "offset_seconds": offset.total_seconds()})
@@ -790,6 +791,11 @@ async def ws_time_advance(hass: HomeAssistant, connection: websocket_api.ActiveC
     Advances the fake time by the specified number of seconds (relative offset).
     Adds to the existing offset in hass.data[DOMAIN]["time_offset"]. Fires any
     scheduled timers that fall within the advanced time window.
+
+    Uses chunked advancement to handle cascading timers: when automations trigger
+    during settle and schedule new timers (e.g., delay actions), those timers need
+    their deadlines moved forward too. By breaking large advances into smaller chunks,
+    each chunk can advance and settle, allowing cascading timers to be picked up.
     """
     seconds: float = msg["seconds"]
     delta = timedelta(seconds=seconds)
