@@ -67,6 +67,95 @@ class TestRetrospectiveAssertions:
         assert len(entries) > 0
         assert entries[0]["state"] == "on"
 
+    def test_full_duration_entity_created_during_window(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
+        """Test full-duration mode when entity is created during the window.
+
+        Regression test for issue #204: assert_entity_was_in_state fails when entity
+        is created during window in expected state.
+
+        When an entity is created during the assertion window in the expected state
+        and never changes state, the assertion should pass with require_full_duration=True.
+        """
+        # Set fake clock to 20:14
+        time_machine.jump_to_next(month="Sep", day_of_month=13, hour=20, minute=14, second=0)
+
+        # Create entity in "off" state at 20:14
+        entity = "light.test_bathroom_2015_mockupancy_trigger_not_fired"
+        home_assistant.given_an_entity(entity, state="off")
+
+        # Fast-forward to 20:35
+        time_machine.fast_forward(timedelta(minutes=21))
+
+        # Assert entity was "off" throughout the entire window 20:14-20:35
+        # This should pass because the entity was created in "off" state and never changed
+        entries = home_assistant.assert_entity_was_in_state(
+            entity,
+            "off",
+            between=(time(20, 14), time(20, 35)),
+            require_full_duration=True,
+        )
+
+        assert len(entries) > 0
+        assert entries[0]["state"] == "off"
+
+    def test_full_duration_entity_created_during_window_wrong_state(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
+        """Test full-duration mode when entity is created during the window in wrong state.
+
+        When an entity is created during the assertion window in a different state than
+        expected, the assertion should fail with require_full_duration=True.
+        """
+        # Set fake clock to 20:14
+        time_machine.jump_to_next(month="Sep", day_of_month=13, hour=20, minute=14, second=0)
+
+        # Create entity in "on" state at 20:14
+        entity = "light.test_wrong_state"
+        home_assistant.given_an_entity(entity, state="on")
+
+        # Fast-forward to 20:35
+        time_machine.fast_forward(timedelta(minutes=21))
+
+        # Assert entity was "off" throughout the entire window 20:14-20:35
+        # This should fail because the entity was created in "on" state
+        with pytest.raises(AssertionError, match="was not in state 'off' throughout the entire window"):
+            home_assistant.assert_entity_was_in_state(
+                entity,
+                "off",
+                between=(time(20, 14), time(20, 35)),
+                require_full_duration=True,
+            )
+
+    def test_full_duration_entity_existed_before_window(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
+        """Test full-duration mode when entity existed before window and changed during it.
+
+        When an entity existed before the assertion window and changed to the expected state
+        during the window, the assertion should fail with require_full_duration=True.
+        """
+        # Set fake clock to 20:00
+        time_machine.jump_to_next(month="Sep", day_of_month=13, hour=20, minute=0, second=0)
+
+        # Create entity in "on" state at 20:00
+        entity = "light.test_existed_before"
+        home_assistant.given_an_entity(entity, state="on")
+
+        # Fast-forward to 20:14
+        time_machine.fast_forward(timedelta(minutes=14))
+
+        # Change state to "off" at 20:14
+        home_assistant.set_state(entity, "off")
+
+        # Fast-forward to 20:35
+        time_machine.fast_forward(timedelta(minutes=21))
+
+        # Assert entity was "off" throughout the entire window 20:14-20:35
+        # This should fail because the entity was "on" before the window
+        with pytest.raises(AssertionError, match="was not in state 'off' throughout the entire window"):
+            home_assistant.assert_entity_was_in_state(
+                entity,
+                "off",
+                between=(time(20, 14), time(20, 35)),
+                require_full_duration=True,
+            )
+
     def test_full_duration_mode(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
         """Test full-duration mode: entity remained in expected state throughout window."""
         entity = "sensor.full_duration_test"
