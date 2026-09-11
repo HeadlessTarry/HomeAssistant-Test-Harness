@@ -494,7 +494,7 @@ class HomeAssistant:
                 raise AssertionError(f"Failed to query history for {entity_id} between {min_time} and {max_time} (UTC: {start_dt.isoformat()} to {end_dt.isoformat()})")
 
             if history:
-                matching_entries = self._filter_history_entries(history, expected_state, expected_attributes, require_full_duration, start_dt)
+                matching_entries = self._filter_history_entries(history, expected_state, expected_attributes, require_full_duration)
                 if matching_entries:
                     break
 
@@ -609,7 +609,6 @@ class HomeAssistant:
         expected_state: str | Callable[[str], bool] | None,
         expected_attributes: dict[str, Any] | None,
         require_full_duration: bool,
-        start_dt: datetime,
     ) -> list[dict[str, Any]]:
         """Filter history entries based on expected state/attributes and mode.
 
@@ -618,7 +617,6 @@ class HomeAssistant:
             expected_state: Expected state value or predicate.
             expected_attributes: Expected attributes dict.
             require_full_duration: Whether to check full-duration or transition mode.
-            start_dt: Start of the time window (UTC).
 
         Returns:
             List of matching history entries.
