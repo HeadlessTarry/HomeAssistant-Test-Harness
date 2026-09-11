@@ -8,7 +8,7 @@ from datetime import time as dt_time
 from datetime import timedelta, timezone
 from typing import Any, Callable, NoReturn, Optional, Union, overload
 from urllib.parse import urlparse, urlunparse
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from zoneinfo import ZoneInfo
 
 import requests
 import websocket
@@ -83,7 +83,7 @@ class HomeAssistant:
 
         try:
             self._tz = ZoneInfo(timezone_name)
-        except (ZoneInfoNotFoundError, KeyError) as e:
+        except KeyError as e:
             raise ValueError(f"Invalid timezone '{timezone_name}': {e}. Use a valid IANA timezone name such as 'Europe/London' or 'America/New_York'.")
 
     def _handle_http_error(self, e: Exception, method: str, url: str) -> NoReturn:
