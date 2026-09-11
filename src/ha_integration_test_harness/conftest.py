@@ -195,6 +195,14 @@ def home_assistant(request: pytest.FixtureRequest, docker: DockerComposeManager)
     base_url = docker.get_home_assistant_url()
     access_token = docker.read_container_file("homeassistant", "/shared_data/.ha_token")
     ha = HomeAssistant(base_url, access_token)
+
+    try:
+        ha_config = ha.get_config()
+        timezone_str = ha_config.get("time_zone")
+        ha.set_timezone(timezone_str)
+    except Exception as e:
+        logger.warning(f"Failed to set timezone for Home Assistant client: {e}")
+
     request.session.stash[_home_assistant_key] = ha
     return ha
 

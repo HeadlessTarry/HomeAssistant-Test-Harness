@@ -8,6 +8,7 @@ from datetime import time as dt_time
 from datetime import timedelta, timezone
 from typing import Any, Callable, NoReturn, Optional, Union, overload
 from urllib.parse import urlparse, urlunparse
+from zoneinfo import ZoneInfo
 
 import requests
 import websocket
@@ -56,6 +57,7 @@ class HomeAssistant:
         self._known_label_ids: Optional[set[str]] = None
         self._is_unresponsive: bool = False
         self._test_start_time: Optional[datetime] = None
+        self._tz: Optional[ZoneInfo] = None
 
     @property
     def is_unresponsive(self) -> bool:
@@ -65,6 +67,24 @@ class HomeAssistant:
         Once set, the pytest plugin skips remaining tests and suppresses futile cleanup.
         """
         return self._is_unresponsive
+
+    def set_timezone(self, timezone_name: Optional[str]) -> None:
+        """Set the timezone for timestamp display in assertion diagnostics.
+
+        Args:
+            timezone_name: IANA timezone name (e.g. "Europe/London") or None for UTC.
+
+        Raises:
+            ValueError: If timezone_name is provided but is not a valid IANA timezone name.
+        """
+        if timezone_name is None:
+            self._tz = None
+            return
+
+        try:
+            self._tz = ZoneInfo(timezone_name)
+        except KeyError as e:
+            raise ValueError(f"Invalid timezone '{timezone_name}': {e}. Use a valid IANA timezone name such as 'Europe/London' or 'America/New_York'.")
 
     def _handle_http_error(self, e: Exception, method: str, url: str) -> NoReturn:
         """Convert a requests exception to the appropriate harness exception. Always raises."""
@@ -787,11 +807,21 @@ class HomeAssistant:
             ts = datetime.fromisoformat(ts_str)
         except Exception:
             ts = test_start_time
+
         if ts.tzinfo is not None:
-            ts = ts.replace(tzinfo=None)
-        relative = (ts - test_start_time).total_seconds()
+            ts_utc = ts.astimezone(timezone.utc).replace(tzinfo=None)
+        else:
+            ts_utc = ts
+
+        relative = (ts_utc - test_start_time).total_seconds()
         relative_str = f"+{relative:.1f}s" if relative >= 0 else f"{relative:.1f}s"
-        absolute_str = ts.strftime("%H:%M:%S")
+
+        if ts.tzinfo is not None and self._tz is not None:
+            ts_display = ts.astimezone(self._tz).replace(tzinfo=None)
+        else:
+            ts_display = ts_utc
+
+        absolute_str = ts_display.strftime("%H:%M:%S")
         return absolute_str, relative_str
 
     def _compute_attr_deltas(self, prev_attrs: dict[str, Any], current_attrs: dict[str, Any]) -> list[str]:
