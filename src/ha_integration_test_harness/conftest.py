@@ -261,7 +261,24 @@ def time_machine(docker: DockerComposeManager, home_assistant: HomeAssistant) ->
         home_assistant.ws_time_set(timestamp_str)
 
     def _advance_time(delta: timedelta) -> None:
-        home_assistant.ws_time_advance(delta.total_seconds())
+        # Break large advances into chunks to handle cascading timers
+        # Each chunk is a separate WebSocket call to avoid cumulative timeouts
+        # Use adaptive chunk size based on total duration to avoid too many iterations
+        total_seconds = delta.total_seconds()
+        if total_seconds <= 300:  # 5 minutes or less
+            chunk_size = 60.0  # Max 5 iterations
+        elif total_seconds <= 3600:  # 1 hour or less
+            chunk_size = 300.0  # 5 minutes, max 12 iterations
+        elif total_seconds <= 86400:  # 1 day or less
+            chunk_size = 3600.0  # 1 hour, max 24 iterations
+        else:  # More than 1 day
+            chunk_size = 86400.0  # 1 day, max 365 iterations for 1 year
+
+        remaining = total_seconds
+        while remaining > 0:
+            chunk = min(chunk_size, remaining)
+            home_assistant.ws_time_advance(chunk)
+            remaining -= chunk
 
     def _get_current_time_ws() -> datetime:
         result = home_assistant.ws_time_get()

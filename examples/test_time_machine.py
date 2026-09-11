@@ -373,5 +373,6 @@ class TestTimeMachine:
         time_machine.fast_forward(delta)
 
         # Calculate expected time and verify
+        # Use larger tolerance (15s) since chunking introduces more opportunity for drift
         expected_dt = before_dt + delta
-        self.assert_datetime_is_approx(home_assistant, expected_dt)
+        self.assert_datetime_is_approx(home_assistant, expected_dt, tolerance_in_seconds=15)

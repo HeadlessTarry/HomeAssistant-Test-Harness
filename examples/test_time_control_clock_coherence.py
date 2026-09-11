@@ -181,3 +181,46 @@ class TestWebSocketStaysResponsive:
 
         # And the connection is still usable afterwards.
         assert home_assistant.get_state("sun.sun") is not None
+
+
+class TestSingleLargeFastForwardWithDelay:
+    """Regression cover for issue #198: single large fast_forward with time trigger + delay.
+
+    The reported symptom was that a single large fast_forward() spanning both a time
+    trigger and a subsequent delay action would not complete the delay. The actions
+    after the delay would never execute. However, splitting the same total duration
+    across multiple smaller fast_forward() calls worked correctly.
+
+    The root cause was that _advance_scheduled_timers() ran once before settle, missing
+    timers scheduled during settle by triggered automations (e.g., delay actions).
+    """
+
+    def test_single_large_fast_forward_advances_delay_scheduled_during_settle(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
+        """A single fast_forward spanning trigger + delay must complete the delay."""
+        light = "light.delay_bug_test_light"
+        home_assistant.given_an_entity(light, "off")
+
+        # Jump to just before the trigger time (18:45:00)
+        time_machine.jump_to_next(hour=18, minute=44)
+
+        # Single large fast_forward past trigger (18:45) + delay (5 min) = 11min 15sec
+        time_machine.fast_forward(timedelta(minutes=11, seconds=15))
+
+        # Light should be on: trigger fired at 18:45, delay of 5 min completed by 18:50
+        home_assistant.assert_entity_state(light, "on")
+
+    def test_multiple_small_fast_forwards_work_as_baseline(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
+        """Multiple smaller fast_forwards spanning trigger + delay must work (baseline)."""
+        light = "light.delay_bug_test_light"
+        home_assistant.given_an_entity(light, "off")
+
+        # Jump to just before the trigger time (18:45:00)
+        time_machine.jump_to_next(hour=18, minute=44)
+
+        # Multiple smaller fast_forwards totaling the same duration
+        time_machine.fast_forward(timedelta(minutes=1, seconds=15))  # Past trigger
+        time_machine.fast_forward(timedelta(minutes=5))  # Mid-delay
+        time_machine.fast_forward(timedelta(minutes=5))  # Past delay
+
+        # Light should be on
+        home_assistant.assert_entity_state(light, "on")
