@@ -1,6 +1,9 @@
 ---
 # Minimal Home Assistant configuration for example tests
 
+homeassistant:
+  time_zone: Europe/London
+
 default_config:
 
 # Enable REST API

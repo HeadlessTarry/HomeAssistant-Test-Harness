@@ -402,8 +402,9 @@ class HomeAssistant:
 
         **Behavior:**
 
-        - Resolves ``between`` time-of-day pairs to UTC datetimes using the fake clock's date
-          (or real UTC if no fake time is set).
+        - Resolves ``between`` time-of-day pairs as local times in the timezone configured in
+          Home Assistant, converted to UTC datetimes using the fake clock's date (or real UTC
+          if no fake time is set).
         - Supports midnight crossing: if ``min_time > max_time``, assumes ``max_time`` is on
           the next day.
         - Returns the matching history entries (list of dicts).
@@ -557,9 +558,10 @@ class HomeAssistant:
             A tuple of (start_utc, end_utc) as timezone-aware UTC datetimes.
         """
         reference_date = self._get_reference_date()
+        local_tz = self._get_local_timezone()
 
-        start_dt = datetime.combine(reference_date, min_time, tzinfo=timezone.utc)
-        end_dt = datetime.combine(reference_date, max_time, tzinfo=timezone.utc)
+        start_dt = datetime.combine(reference_date, min_time, tzinfo=local_tz).astimezone(timezone.utc)
+        end_dt = datetime.combine(reference_date, max_time, tzinfo=local_tz).astimezone(timezone.utc)
 
         if min_time > max_time:
             end_dt += timedelta(days=1)
@@ -585,6 +587,21 @@ class HomeAssistant:
         except Exception:
             pass
         return datetime.now(timezone.utc).date()
+
+    def _get_local_timezone(self) -> ZoneInfo | timezone:
+        """Get the local timezone configured in Home Assistant.
+
+        Returns:
+            A timezone object representing the configured local timezone, or UTC if not configured.
+        """
+        try:
+            ha_config = self.get_config()
+            tz_name = ha_config.get("time_zone")
+            if tz_name:
+                return ZoneInfo(tz_name)
+        except Exception:
+            pass
+        return timezone.utc
 
     def _filter_history_entries(
         self,
