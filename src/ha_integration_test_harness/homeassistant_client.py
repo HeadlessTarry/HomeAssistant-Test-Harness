@@ -710,11 +710,10 @@ class HomeAssistant:
     ) -> bool:
         """Check if the entity remained in the expected state throughout the entire window.
 
-        Verifies that every history entry in the window matches the expected state/attributes
-        and that the first entry's timestamp is at or before the window start. Under HA's
-        history model, state persists until the next change, so if all entries match and
-        the first covers the window start, the entity remained in the expected state for
-        the full window.
+        Verifies that every history entry in the window matches the expected state/attributes.
+        If the first matching entry is also the first entry in the history, the entity was
+        created during the window in the expected state (pass). Otherwise, the entity existed
+        before the window and changed state during it (fail).
 
         Args:
             history: Full history for the window.
@@ -731,10 +730,13 @@ class HomeAssistant:
             return False
 
         first_match_ts = self._parse_history_timestamp(matching_entries[0])
-        if first_match_ts > start_dt:
-            return False
-
-        return True
+        first_history_ts = self._parse_history_timestamp(history[0])
+        # If the first matching entry is the first entry in the history, the entity was
+        # created during the window (or at the window start) in the expected state.
+        if first_match_ts == first_history_ts:
+            return True
+        # Otherwise, the entity existed before the window and changed state during it.
+        return False
 
     def _parse_history_timestamp(self, entry: dict[str, Any]) -> datetime:
         """Parse a timestamp from a history entry.
