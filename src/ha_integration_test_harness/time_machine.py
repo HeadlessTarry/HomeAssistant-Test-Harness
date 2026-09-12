@@ -150,7 +150,7 @@ class TimeMachine:
             ValueError: If no timezone was configured on this TimeMachine instance.
         """
         if self._tz is None:
-            raise ValueError("Cannot get local time: no timezone configured. " "Pass timezone= (e.g. 'Europe/London') when constructing the TimeMachine.")
+            raise ValueError("Cannot get local time: no timezone configured. Pass timezone= (e.g. 'Europe/London') when constructing the TimeMachine.")
         current_utc = self._get_current_time().replace(tzinfo=_stdlib_timezone.utc)
         return current_utc.astimezone(self._tz)
 
