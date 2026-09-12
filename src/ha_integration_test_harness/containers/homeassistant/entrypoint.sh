@@ -11,9 +11,9 @@ touch /config/automations.yaml
 rm -rf /config/.storage
 mkdir -p /config/.storage
 
-# Start Home Assistant in the background
+# Start Home Assistant in the background via the wrapper (patches time.time() before HA loads)
 echo "🚀 Starting Home Assistant..."
-hass --config /config &
+python /hass_wrapper.py --config /config &
 HA_PID=$!
 
 # Wait for Home Assistant to be ready
