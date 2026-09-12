@@ -1,32 +1,10 @@
 """Example tests demonstrating retrospective time-window assertions."""
 
-import time as time_module
-from datetime import datetime, time, timedelta
-from zoneinfo import ZoneInfo
+from datetime import time, timedelta
 
 import pytest
 
 from ha_integration_test_harness import HomeAssistant, TimeMachine
-
-
-def _add_minutes(hour: int, minute: int, minutes_to_add: int) -> tuple[int, int]:
-    """Add minutes to a time, handling overflow."""
-    total_minutes = hour * 60 + minute + minutes_to_add
-    return (total_minutes // 60) % 24, total_minutes % 60
-
-
-def _get_current_local_hour_minute(home_assistant: HomeAssistant) -> tuple[int, int]:
-    """Get the current local hour and minute from the fake clock.
-
-    Converts the UTC timestamp from ws_time_get() to local time using the
-    HA-configured timezone.
-    """
-    current_time_ws = home_assistant.ws_time_get()
-    current_utc = datetime.fromisoformat(current_time_ws["timestamp"])
-    ha_config = home_assistant.get_config()
-    local_tz = ZoneInfo(ha_config.get("time_zone", "UTC"))
-    current_local = current_utc.astimezone(local_tz)
-    return current_local.hour, current_local.minute
 
 
 class TestRetrospectiveAssertions:
@@ -41,26 +19,22 @@ class TestRetrospectiveAssertions:
 
     def test_transition_mode_basic(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
         """Test transition mode: entity entered expected state during window."""
-        # Record current time
-        current_hour, current_minute = _get_current_local_hour_minute(home_assistant)
-
-        # Set up a time window in the past
-        start_hour = int(current_hour) - 1 if int(current_hour) > 0 else 23
-        start_minute = int(current_minute)
-        end_hour = int(current_hour)
-        end_minute = int(current_minute)
+        # Move time past the entity creation time
+        time_machine.fast_forward(timedelta(seconds=5))
+        start_of_window = time_machine.get_current_local_time()
 
         # Change state within the window
         home_assistant.set_state(self.an_entity, "on", {"brightness": 255})
 
-        # Advance time past the window
+        # Advance time to end of window
         time_machine.fast_forward(timedelta(minutes=5))
+        end_of_window = time_machine.get_current_local_time()
 
         # Verify the entity was "on" at some point during the window
         entries = home_assistant.assert_entity_was_in_state(
             self.an_entity,
             "on",
-            between=(time(start_hour, start_minute), time(end_hour, end_minute)),
+            between=(start_of_window.time(), end_of_window.time()),
         )
 
         # Verify we got matching entries
@@ -76,22 +50,24 @@ class TestRetrospectiveAssertions:
         When an entity is created during the assertion window in the expected state
         and never changes state, the assertion should pass with require_full_duration=True.
         """
-        # Set fake clock to 20:14
-        time_machine.jump_to_next(month="Sep", day_of_month=13, hour=20, minute=14, second=0)
+        start_of_window = time_machine.get_current_local_time()
 
-        # Create entity in "off" state at 20:14
-        entity = "light.test_bathroom_2015_mockupancy_trigger_not_fired"
+        # Move past start of window and create entity
+        one_minute = timedelta(minutes=1)
+        time_machine.fast_forward(one_minute)
+        entity = "light.test_entity_created_mid_window"
         home_assistant.given_an_entity(entity, state="off")
 
-        # Fast-forward to 20:35
-        time_machine.fast_forward(timedelta(minutes=21))
+        # Advance time to end of window
+        time_machine.fast_forward(timedelta(minutes=5))
+        end_of_window = time_machine.get_current_local_time()
 
-        # Assert entity was "off" throughout the entire window 20:14-20:35
+        # Assert entity was "off" throughout the entire window
         # This should pass because the entity was created in "off" state and never changed
         entries = home_assistant.assert_entity_was_in_state(
             entity,
             "off",
-            between=(time(20, 14), time(20, 35)),
+            between=(start_of_window.time(), end_of_window.time()),
             require_full_duration=True,
         )
 
@@ -104,23 +80,24 @@ class TestRetrospectiveAssertions:
         When an entity is created during the assertion window in a different state than
         expected, the assertion should fail with require_full_duration=True.
         """
-        # Set fake clock to 20:14
-        time_machine.jump_to_next(month="Sep", day_of_month=13, hour=20, minute=14, second=0)
+        start_of_window = time_machine.get_current_local_time()
 
-        # Create entity in "on" state at 20:14
-        entity = "light.test_wrong_state"
+        # Move past start of window and create entity - with a state not matching expected
+        time_machine.fast_forward(timedelta(minutes=1))
+        entity = "light.test_entity_created_mid_window_wrong_state"
         home_assistant.given_an_entity(entity, state="on")
 
-        # Fast-forward to 20:35
-        time_machine.fast_forward(timedelta(minutes=21))
+        # Advance time to end of window
+        time_machine.fast_forward(timedelta(minutes=5))
+        end_of_window = time_machine.get_current_local_time()
 
-        # Assert entity was "off" throughout the entire window 20:14-20:35
+        # Assert entity was "off" throughout the entire window
         # This should fail because the entity was created in "on" state
         with pytest.raises(AssertionError, match="was not in state 'off' throughout the entire window"):
             home_assistant.assert_entity_was_in_state(
                 entity,
                 "off",
-                between=(time(20, 14), time(20, 35)),
+                between=(start_of_window.time(), end_of_window.time()),
                 require_full_duration=True,
             )
 
@@ -130,70 +107,75 @@ class TestRetrospectiveAssertions:
         When an entity existed before the assertion window and changed to the expected state
         during the window, the assertion should fail with require_full_duration=True.
         """
-        # Set fake clock to 20:00
-        time_machine.jump_to_next(month="Sep", day_of_month=13, hour=20, minute=0, second=0)
+        # Entity created in "off" state via pytest fixture
 
-        # Create entity in "on" state at 20:00
-        entity = "light.test_existed_before"
-        home_assistant.given_an_entity(entity, state="on")
+        # Establish the start of window after entity was created
+        time_machine.fast_forward(timedelta(minutes=1))
+        start_of_window = time_machine.get_current_local_time()
 
-        # Fast-forward to 20:14
-        time_machine.fast_forward(timedelta(minutes=14))
+        # Advance time, and change entity state (mid-window)
+        time_machine.fast_forward(timedelta(minutes=1))
+        home_assistant.set_state(self.an_entity, "on")
 
-        # Change state to "off" at 20:14
-        home_assistant.set_state(entity, "off")
+        # Advance time to end of window
+        time_machine.fast_forward(timedelta(minutes=5))
+        end_of_window = time_machine.get_current_local_time()
 
-        # Fast-forward to 20:35
-        time_machine.fast_forward(timedelta(minutes=21))
-
-        # Assert entity was "off" throughout the entire window 20:14-20:35
-        # This should fail because the entity was "on" before the window
+        # Assert entity was "off" throughout the entire window
+        # This should fail because the entity changed to "on" mid-window
         with pytest.raises(AssertionError, match="was not in state 'off' throughout the entire window"):
             home_assistant.assert_entity_was_in_state(
-                entity,
+                self.an_entity,
                 "off",
-                between=(time(20, 14), time(20, 35)),
+                between=(start_of_window.time(), end_of_window.time()),
                 require_full_duration=True,
             )
 
     def test_full_duration_mode(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
         """Test full-duration mode: entity remained in expected state throughout window."""
-        entity = "sensor.full_duration_test"
-        home_assistant.given_an_entity(entity, state="off")
+        # Entity created in "off" state via pytest fixture
 
-        current_hour, current_minute = _get_current_local_hour_minute(home_assistant)
+        # Establish the start of window after entity creation
+        time_machine.fast_forward(timedelta(minutes=1))
+        start_of_window = time_machine.get_current_local_time()
 
-        start_hour, start_minute = current_hour, current_minute
-        end_hour, end_minute = _add_minutes(current_hour, current_minute, 3)
+        # Set the same state again
+        time_machine.fast_forward(timedelta(minutes=1))
+        home_assistant.set_state(self.an_entity, "off")
 
-        home_assistant.set_state(entity, "on", {"brightness": 255})
-        time_machine.fast_forward(timedelta(minutes=3))
+        # Advance time to end of window
+        time_machine.fast_forward(timedelta(minutes=5))
+        end_of_window = time_machine.get_current_local_time()
 
+        # Assert entity was "off" throughout the entire window
+        # This should pass because the entity was created in "off" state and never changed
         entries = home_assistant.assert_entity_was_in_state(
-            entity,
-            "on",
-            between=(time(start_hour, start_minute), time(end_hour, end_minute)),
+            self.an_entity,
+            "off",
+            between=(start_of_window.time(), end_of_window.time()),
+            require_full_duration=True,
         )
 
         assert len(entries) > 0
+        assert entries[0]["state"] == "off"
 
     def test_attribute_matching(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
         """Test retrospective assertion with attribute matching."""
-        entity = "sensor.attr_match_test"
-        home_assistant.given_an_entity(entity, state="off")
+        # Establish the start of window
+        start_of_window = time_machine.get_current_local_time()
 
-        current_hour, current_minute = _get_current_local_hour_minute(home_assistant)
+        # Advance time and adjust attribute
+        time_machine.fast_forward(timedelta(minutes=1))
+        home_assistant.set_state(self.an_entity, "on", attributes={"brightness": 128})
 
-        start_hour, start_minute = current_hour, current_minute
-        end_hour, end_minute = _add_minutes(current_hour, current_minute, 3)
-
-        home_assistant.set_state(entity, "on", {"brightness": 128, "color_temp": 4000})
-        time_machine.fast_forward(timedelta(minutes=3))
+        # Advance time to end of window
+        time_machine.fast_forward(timedelta(minutes=5))
+        end_of_window = time_machine.get_current_local_time()
 
         entries = home_assistant.assert_entity_was_in_state(
-            entity,
+            self.an_entity,
             "on",
-            between=(time(start_hour, start_minute), time(end_hour, end_minute)),
+            between=(start_of_window.time(), end_of_window.time()),
             expected_attributes={"brightness": 128},
         )
 
@@ -202,66 +184,65 @@ class TestRetrospectiveAssertions:
 
     def test_predicate_state(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
         """Test retrospective assertion with predicate function for state."""
-        current_hour, current_minute = _get_current_local_hour_minute(home_assistant)
+        # Establish start time
+        start_of_window = time_machine.get_current_local_time()
 
-        start_hour, start_minute = _add_minutes(current_hour, current_minute, 1)
-        end_hour, end_minute = _add_minutes(current_hour, current_minute, 3)
-
+        # Change state within the window
         time_machine.fast_forward(timedelta(minutes=1))
-
         home_assistant.set_state(self.an_entity, "42")
 
-        time_machine.fast_forward(timedelta(minutes=3))
+        # Advance time to end of window
+        time_machine.fast_forward(timedelta(minutes=5))
+        end_of_window = time_machine.get_current_local_time()
 
+        # Verify the entity was "on" at some point during the window
         entries = home_assistant.assert_entity_was_in_state(
             self.an_entity,
             lambda s: s.isdigit() and int(s) > 40,
-            between=(time(start_hour, start_minute), time(end_hour, end_minute)),
+            between=(start_of_window.time(), end_of_window.time()),
         )
 
+        # Verify we got matching entries
         assert len(entries) > 0
         assert int(entries[0]["state"]) > 40
 
     def test_predicate_attribute(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
         """Test retrospective assertion with predicate function for attributes."""
-        current_hour, current_minute = _get_current_local_hour_minute(home_assistant)
+        # Establish start time
+        start_of_window = time_machine.get_current_local_time()
 
-        start_hour, start_minute = _add_minutes(current_hour, current_minute, 1)
-        end_hour, end_minute = _add_minutes(current_hour, current_minute, 3)
-
+        # Change state within the window
         time_machine.fast_forward(timedelta(minutes=1))
+        home_assistant.set_state(self.an_entity, "on", attributes={"brightness": 160})
 
-        home_assistant.set_state(self.an_entity, "on", {"brightness": 200})
+        # Advance time to end of window
+        time_machine.fast_forward(timedelta(minutes=5))
+        end_of_window = time_machine.get_current_local_time()
 
-        time_machine.fast_forward(timedelta(minutes=3))
-
+        # Verify the entity was "on" at some point during the window
         entries = home_assistant.assert_entity_was_in_state(
-            self.an_entity,
-            "on",
-            between=(time(start_hour, start_minute), time(end_hour, end_minute)),
-            expected_attributes={"brightness": lambda v: v is not None and v >= 150},
+            self.an_entity, "on", between=(start_of_window.time(), end_of_window.time()), expected_attributes={"brightness": lambda v: v is not None and v >= 150}
         )
 
+        # Verify we got matching entries
         assert len(entries) > 0
         assert entries[0]["attributes"]["brightness"] >= 150
 
     def test_attribute_only_check(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
         """Test retrospective assertion with attribute-only check (no state check)."""
+        # Establish start time
+        start_of_window = time_machine.get_current_local_time()
+
+        # Change state within the window
+        time_machine.fast_forward(timedelta(minutes=1))
         home_assistant.set_state(self.an_entity, "on", {"brightness": 100})
 
-        current_hour, current_minute = _get_current_local_hour_minute(home_assistant)
+        # Advance time to end of window
+        time_machine.fast_forward(timedelta(minutes=5))
+        end_of_window = time_machine.get_current_local_time()
 
-        start_hour, start_minute = _add_minutes(current_hour, current_minute, 1)
-        end_hour, end_minute = _add_minutes(current_hour, current_minute, 3)
-
-        time_machine.fast_forward(timedelta(minutes=4))
-
-        entries = home_assistant.assert_entity_was_in_state(
-            self.an_entity,
-            None,
-            between=(time(start_hour, start_minute), time(end_hour, end_minute)),
-            expected_attributes={"brightness": 100},
-        )
+        # Verify the entity was "on" at some point during the window
+        entries = home_assistant.assert_entity_was_in_state(self.an_entity, None, between=(start_of_window.time(), end_of_window.time()), expected_attributes={"brightness": 100})
 
         assert len(entries) > 0
 
@@ -271,62 +252,60 @@ class TestRetrospectiveAssertions:
         fresh_entity = "sensor.fresh_entity"
         home_assistant.given_an_entity(fresh_entity, state="initial")
 
-        # Record current time
-        current_hour, current_minute = _get_current_local_hour_minute(home_assistant)
-
-        # Define a window in the far past (before the entity was created)
-        start_hour = (current_hour - 5) % 24
-        start_minute = current_minute
-        end_hour = (current_hour - 4) % 24
-        end_minute = current_minute
-
-        # Advance time
+        # Establish start time
         time_machine.fast_forward(timedelta(minutes=1))
+        start_of_window = time_machine.get_current_local_time()
+
+        # Advance time to end of window
+        time_machine.fast_forward(timedelta(minutes=5))
+        end_of_window = time_machine.get_current_local_time()
 
         # This should fail because no state changes occurred in that window
         with pytest.raises(AssertionError, match="No state changes recorded|was not in state"):
             home_assistant.assert_entity_was_in_state(
                 fresh_entity,
                 "on",
-                between=(time(start_hour, start_minute), time(end_hour, end_minute)),
+                between=(start_of_window.time(), end_of_window.time()),
             )
 
     def test_failure_state_not_matched(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
         """Test that assertion fails when state doesn't match."""
-        home_assistant.set_state(self.an_entity, "off")
+        # Establish start time
+        time_machine.fast_forward(timedelta(minutes=1))
+        start_of_window = time_machine.get_current_local_time()
 
-        current_hour, current_minute = _get_current_local_hour_minute(home_assistant)
-        start_hour, start_minute = current_hour, current_minute
-        end_hour, end_minute = _add_minutes(current_hour, current_minute, 2)
-
+        # Advance time to end of window
         time_machine.fast_forward(timedelta(minutes=5))
+        end_of_window = time_machine.get_current_local_time()
 
         with pytest.raises(AssertionError, match="was not in state"):
             home_assistant.assert_entity_was_in_state(
                 self.an_entity,
-                "on",
-                between=(time(start_hour, start_minute), time(end_hour, end_minute)),
+                "never_this_state",
+                between=(start_of_window.time(), end_of_window.time()),
             )
 
     def test_failure_full_duration_not_met(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
         """Test that full-duration assertion fails when state changes during window."""
+        # Entity created in "off" state via pytest fixture
+
+        # Establish the start of window after entity creation
+        time_machine.fast_forward(timedelta(minutes=1))
+        start_of_window = time_machine.get_current_local_time()
+
+        # Set the expected state, but after the window starts
+        time_machine.fast_forward(timedelta(minutes=1))
         home_assistant.set_state(self.an_entity, "on")
 
-        current_hour, current_minute = _get_current_local_hour_minute(home_assistant)
-
-        start_hour, start_minute = current_hour, current_minute
-        end_hour, end_minute = _add_minutes(current_hour, current_minute, 5)
-
-        time_machine.fast_forward(timedelta(minutes=2))
-        home_assistant.set_state(self.an_entity, "off")
-
+        # Advance time to end of window
         time_machine.fast_forward(timedelta(minutes=5))
+        end_of_window = time_machine.get_current_local_time()
 
         with pytest.raises(AssertionError, match="was not in state"):
             home_assistant.assert_entity_was_in_state(
                 self.an_entity,
                 "on",
-                between=(time(start_hour, start_minute), time(end_hour, end_minute)),
+                between=(start_of_window.time(), end_of_window.time()),
                 require_full_duration=True,
             )
 
@@ -349,131 +328,55 @@ class TestRetrospectiveAssertions:
 
     def test_no_expected_state_or_attributes_raises(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
         """Test that missing both expected_state and expected_attributes raises ValueError."""
-        current_hour, current_minute = _get_current_local_hour_minute(home_assistant)
+        start_of_window = time_machine.get_current_local_time()
 
-        end_hour, end_minute = _add_minutes(current_hour, current_minute, 5)
+        # Advance time to end of window
+        time_machine.fast_forward(timedelta(minutes=5))
+        end_of_window = time_machine.get_current_local_time()
 
         with pytest.raises(ValueError, match="At least one of expected_state or expected_attributes"):
             home_assistant.assert_entity_was_in_state(
                 self.an_entity,
                 None,
-                between=(time(current_hour, current_minute), time(end_hour, end_minute)),
+                between=(start_of_window.time(), end_of_window.time()),
             )
 
     def test_future_window_fails(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
         """Test that a window entirely in the future fails with no history."""
-        current_hour, current_minute = _get_current_local_hour_minute(home_assistant)
+        current_local_time = time_machine.get_current_local_time()
 
-        start_hour, start_minute = _add_minutes(current_hour, current_minute, 30)
-        end_hour, end_minute = _add_minutes(start_hour, start_minute, 10)
+        in_the_future = (current_local_time + timedelta(minutes=30)).time()
+        further_in_future = (current_local_time + timedelta(minutes=60)).time()
 
         with pytest.raises(AssertionError, match="No state changes recorded|not found in history"):
             home_assistant.assert_entity_was_in_state(
                 self.an_entity,
                 "on",
-                between=(time(start_hour, start_minute), time(end_hour, end_minute)),
+                between=(in_the_future, further_in_future),
             )
 
     def test_attribute_matching_full_duration(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
         """Test attribute matching in full-duration mode."""
-        current_hour, current_minute = _get_current_local_hour_minute(home_assistant)
-
-        start_hour, start_minute = _add_minutes(current_hour, current_minute, 2)
-        end_hour, end_minute = _add_minutes(current_hour, current_minute, 4)
-
-        time_machine.fast_forward(timedelta(minutes=1))
-
         home_assistant.set_state(self.an_entity, "on", {"brightness": 200, "color_temp": 3000})
 
-        time_machine.fast_forward(timedelta(minutes=4))
+        # Establish the start of window
+        time_machine.fast_forward(timedelta(minutes=1))
+        start_of_window = time_machine.get_current_local_time()
+
+        # Advance time to end of window
+        time_machine.fast_forward(timedelta(minutes=5))
+        end_of_window = time_machine.get_current_local_time()
 
         entries = home_assistant.assert_entity_was_in_state(
             self.an_entity,
             "on",
-            between=(time(start_hour, start_minute), time(end_hour, end_minute)),
+            between=(start_of_window.time(), end_of_window.time()),
             expected_attributes={"brightness": 200},
             require_full_duration=True,
         )
 
         assert len(entries) > 0
         assert entries[0]["attributes"]["brightness"] == 200
-
-    def test_async_hypothesis_with_sleep(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
-        """Test if adding a sleep before querying history fixes the CI failure.
-
-        This tests the hypothesis that state changes are recorded asynchronously
-        and may not be immediately available in the History API, especially in CI.
-        """
-        entity = "sensor.async_sleep_test"
-        home_assistant.given_an_entity(entity, state="off")
-
-        current_hour, current_minute = _get_current_local_hour_minute(home_assistant)
-
-        start_hour, start_minute = current_hour, current_minute
-        end_hour, end_minute = _add_minutes(current_hour, current_minute, 3)
-
-        home_assistant.set_state(entity, "on", {"brightness": 255})
-        time_machine.fast_forward(timedelta(minutes=3))
-
-        print("\n[DIAGNOSTIC] test_async_hypothesis_with_sleep:")
-        print("  Adding 2 second sleep before querying history...")
-        time_module.sleep(2)
-
-        entries = home_assistant.assert_entity_was_in_state(
-            entity,
-            "on",
-            between=(time(start_hour, start_minute), time(end_hour, end_minute)),
-        )
-
-        assert len(entries) > 0
-        print(f"  SUCCESS: Found {len(entries)} entries after sleep")
-
-    def test_retry_hypothesis(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
-        """Test if retrying the history query eventually succeeds.
-
-        This tests the hypothesis that the History API has eventual consistency
-        and may need retries before the state change is visible.
-        """
-        entity = "sensor.retry_test"
-        home_assistant.given_an_entity(entity, state="off")
-
-        current_hour, current_minute = _get_current_local_hour_minute(home_assistant)
-
-        start_hour, start_minute = current_hour, current_minute
-        end_hour, end_minute = _add_minutes(current_hour, current_minute, 3)
-
-        home_assistant.set_state(entity, "on", {"brightness": 255})
-        time_machine.fast_forward(timedelta(minutes=3))
-
-        print("\n[DIAGNOSTIC] test_retry_hypothesis:")
-
-        # Try querying history with retries
-        from datetime import datetime, timezone
-
-        reference_date = home_assistant._get_reference_date()
-        start_dt = datetime.combine(reference_date, time(start_hour, start_minute), tzinfo=timezone.utc)
-        end_dt = datetime.combine(reference_date, time(end_hour, end_minute), tzinfo=timezone.utc)
-
-        max_retries = 5
-        for attempt in range(max_retries):
-            history = home_assistant._get_state_history(entity, start_dt, end_dt)
-            print(f"  Attempt {attempt + 1}/{max_retries}: history = {len(history) if history else 'None'} entries")
-
-            if history and len(history) > 0:
-                print(f"  SUCCESS: Found {len(history)} entries on attempt {attempt + 1}")
-                break
-
-            if attempt < max_retries - 1:
-                time_module.sleep(0.5)
-
-        # Now try the actual assertion
-        entries = home_assistant.assert_entity_was_in_state(
-            entity,
-            "on",
-            between=(time(start_hour, start_minute), time(end_hour, end_minute)),
-        )
-
-        assert len(entries) > 0
 
     def test_between_times_are_local_not_utc(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
         """Test that between times are interpreted as local times, not UTC.
@@ -485,15 +388,12 @@ class TestRetrospectiveAssertions:
         then verifies that between=(17:55, 18:05) is interpreted as local times
         (17:55-18:05 BST = 16:55-17:05 UTC), not UTC times.
         """
-        entity = "sensor.timezone_test"
-        home_assistant.given_an_entity(entity, state="off")
-
         # Set fake clock to September 12, 2026 at 18:00 BST (17:00 UTC)
         # Europe/London is UTC+1 during BST (late March to late October)
         time_machine.jump_to_next(month="Sep", day_of_month=12, hour=18, minute=0, second=0)
 
         # Change state at 18:00 local time (17:00 UTC)
-        home_assistant.set_state(entity, "on")
+        home_assistant.set_state(self.an_entity, "on")
 
         # Advance time by 10 minutes (to 18:10 BST = 17:10 UTC)
         time_machine.fast_forward(timedelta(minutes=10))
@@ -503,7 +403,7 @@ class TestRetrospectiveAssertions:
         # If the bug exists, this will fail because it will look for the state change
         # between 17:55-18:05 UTC (18:55-19:05 BST), which is in the future
         entries = home_assistant.assert_entity_was_in_state(
-            entity,
+            self.an_entity,
             "on",
             between=(time(17, 55), time(18, 5)),
         )
