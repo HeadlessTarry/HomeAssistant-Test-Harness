@@ -137,6 +137,23 @@ class TimeMachine:
             logger.debug(f"Using cached/fallback fake time: {self._fake_time} (WebSocket error: {e})")
         return self._fake_time
 
+    def get_current_local_time(self) -> datetime:
+        """Get the current fake time in the configured local timezone.
+
+        Fetches the current fake time from the WebSocket (which returns UTC) and
+        converts it to the local timezone configured on this TimeMachine instance.
+
+        Returns:
+            Timezone-aware datetime in the configured local timezone.
+
+        Raises:
+            ValueError: If no timezone was configured on this TimeMachine instance.
+        """
+        if self._tz is None:
+            raise ValueError("Cannot get local time: no timezone configured. Pass timezone= (e.g. 'Europe/London') when constructing the TimeMachine.")
+        current_utc = self._get_current_time().replace(tzinfo=_stdlib_timezone.utc)
+        return current_utc.astimezone(self._tz)
+
     def _local_time_to_utc(self, reference_utc: datetime, hour: Optional[int], minute: Optional[int], second: Optional[int], current_time: datetime) -> datetime:
         """Apply hour/minute/second constraints in the configured local timezone, returning naive UTC.
 
