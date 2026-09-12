@@ -446,10 +446,13 @@ class HomeAssistant:
         history, matching_entries = self._query_history_with_retry(entity_id, expected_state, expected_attributes, require_full_duration, start_dt, end_dt, min_time, max_time)
 
         if not history:
-            utc_range = f"(UTC: {start_dt.isoformat()} to {end_dt.isoformat()})"
-            if self.get_state(entity_id) is None:
-                raise AssertionError(f"Entity {entity_id} not found in history for the given window between {min_time} and {max_time} {utc_range}")
-            raise AssertionError(f"No state changes recorded for {entity_id} between {min_time} and {max_time} {utc_range}")
+            current_state = self.get_state(entity_id)
+            if current_state is None:
+                raise AssertionError(f"Entity {entity_id} did not exist")
+            if self._entry_matches_expectations(current_state, expected_state, expected_attributes):
+                return [current_state]
+            error_msg = self._build_current_state_mismatch_message(entity_id, expected_state, expected_attributes, current_state)
+            raise AssertionError(error_msg)
 
         if not matching_entries:
             error_msg = self._build_assertion_error_message(entity_id, expected_state, expected_attributes, require_full_duration, min_time, max_time, start_dt, end_dt, history)
@@ -547,6 +550,45 @@ class HomeAssistant:
         attr_keys = ", ".join(sorted(expected_attributes.keys()))
         return f"Entity {entity_id} was not in state {state_desc} with expected attributes ({attr_keys}) {mode_desc} between {min_time} and {max_time} {utc_range}.\n{history_snippet}"
 
+    def _build_current_state_mismatch_message(
+        self,
+        entity_id: str,
+        expected_state: str | Callable[[str], bool] | None,
+        expected_attributes: dict[str, Any] | None,
+        current_state: dict[str, Any],
+    ) -> str:
+        """Build error message when entity exists but current state doesn't match expectations.
+
+        Args:
+            entity_id: The entity ID that was checked.
+            expected_state: Expected state value or predicate.
+            expected_attributes: Expected attributes dict.
+            current_state: Current state dict from get_state().
+
+        Returns:
+            Formatted error message showing expected vs actual.
+        """
+        actual_state = current_state.get("state", "")
+        actual_attrs = current_state.get("attributes", {})
+        lines: list[str] = [f"Entity {entity_id} exists but does not match expectations:"]
+
+        if expected_state is not None:
+            if callable(expected_state):
+                lines.append(f"  State: expected {_PREDICATE_FUNCTION_DESC}, got '{actual_state}'")
+            elif actual_state != expected_state:
+                lines.append(f"  State: expected '{expected_state}', got '{actual_state}'")
+
+        if expected_attributes is not None:
+            for attr_name, expected_value in sorted(expected_attributes.items()):
+                actual_value = actual_attrs.get(attr_name)
+                if callable(expected_value):
+                    if not expected_value(actual_value):
+                        lines.append(f"  Attribute '{attr_name}': predicate returned False for value {actual_value!r}")
+                elif actual_value != expected_value:
+                    lines.append(f"  Attribute '{attr_name}': expected {expected_value!r}, got {actual_value!r}")
+
+        return "\n".join(lines)
+
     def _resolve_time_window(self, min_time: dt_time, max_time: dt_time) -> tuple[datetime, datetime]:
         """Resolve time-of-day pairs to UTC datetimes using the fake clock's date.
 
@@ -628,6 +670,22 @@ class HomeAssistant:
                 return []
 
         return matching
+
+    def _is_ghost_entry(self, entry: dict[str, Any]) -> bool:
+        """Check if a history entry is a ghost entry with no actual state data.
+
+        The HA history API sometimes returns placeholder entries with empty state
+        and attributes when queried for periods where no state changes occurred.
+
+        Args:
+            entry: A history entry dict.
+
+        Returns:
+            True if the entry has empty state and empty attributes.
+        """
+        state = entry.get("state", "")
+        attrs = entry.get("attributes", {})
+        return state == "" and (not attrs or attrs == {})
 
     def _entry_matches_expectations(
         self,
@@ -804,7 +862,8 @@ class HomeAssistant:
             response.raise_for_status()
             result: list[list[dict[str, Any]]] = response.json()
             if result and len(result) > 0:
-                return result[0]
+                raw_entries = result[0]
+                return [entry for entry in raw_entries if not self._is_ghost_entry(entry)]
             return []
         except Exception as e:
             logger.warning(f"Failed to get state history for {entity_id}: {e}")

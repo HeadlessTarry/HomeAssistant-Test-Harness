@@ -348,7 +348,7 @@ class TestRetrospectiveAssertions:
         in_the_future = (current_local_time + timedelta(minutes=30)).time()
         further_in_future = (current_local_time + timedelta(minutes=60)).time()
 
-        with pytest.raises(AssertionError, match="No state changes recorded|not found in history"):
+        with pytest.raises(AssertionError, match="does not match expectations|No state changes recorded|not found in history"):
             home_assistant.assert_entity_was_in_state(
                 self.an_entity,
                 "on",
