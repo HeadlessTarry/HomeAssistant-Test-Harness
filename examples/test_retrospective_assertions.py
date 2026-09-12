@@ -287,12 +287,14 @@ class TestRetrospectiveAssertions:
 
     def test_attribute_matching_full_duration(self, home_assistant: HomeAssistant, time_machine: TimeMachine) -> None:
         """Test attribute matching in full-duration mode."""
-        home_assistant.set_state(self.an_entity, "on", {"brightness": 200, "color_temp": 3000})
-
         current_hour, current_minute = _get_current_local_hour_minute(home_assistant)
 
-        start_hour, start_minute = _add_minutes(current_hour, current_minute, 1)
-        end_hour, end_minute = _add_minutes(current_hour, current_minute, 3)
+        start_hour, start_minute = _add_minutes(current_hour, current_minute, 2)
+        end_hour, end_minute = _add_minutes(current_hour, current_minute, 4)
+
+        time_machine.fast_forward(timedelta(minutes=1))
+
+        home_assistant.set_state(self.an_entity, "on", {"brightness": 200, "color_temp": 3000})
 
         time_machine.fast_forward(timedelta(minutes=4))
 
