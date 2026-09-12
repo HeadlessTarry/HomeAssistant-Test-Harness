@@ -8,6 +8,7 @@ services:
     volumes:
       - ./homeassistant/generate_long_lived_token.sh:/generate_long_lived_token.sh:ro
       - ./homeassistant/entrypoint.sh:/entrypoint.sh:ro
+      - ./homeassistant/hass_wrapper.py:/hass_wrapper.py:ro
       # Mount entire Home Assistant configuration directory as /config
       # HA_CONFIG_ROOT is set by DockerComposeManager to the detected Home Assistant root
       - ${HA_CONFIG_ROOT}:/config

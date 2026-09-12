@@ -13,9 +13,9 @@ WebSocket commands exposed:
   ha_test_harness/entity/delete     - Remove an entity from HA entirely.
   ha_test_harness/template/freeze   - Freeze a template entity to prevent re-evaluation.
   ha_test_harness/template/unfreeze - Unfreeze a template entity to restore re-evaluation.
-  ha_test_harness/time/set          - Set absolute time (computes offset from real time).
-  ha_test_harness/time/advance      - Advance time by a relative offset.
-  ha_test_harness/time/get          - Get current fake time.
+  ha_test_harness/time/set          - Set frozen time to an absolute timestamp.
+  ha_test_harness/time/advance      - Advance frozen time by a relative offset.
+  ha_test_harness/time/get          - Get current frozen time.
 """
 
 from __future__ import annotations
@@ -26,10 +26,10 @@ import heapq
 import logging
 import time
 import uuid
-from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Callable
+from typing import Any
 
+import hass_wrapper
 import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.components.template.template_entity import TemplateEntity
@@ -54,34 +54,7 @@ _PLATFORM_READY_TIMEOUT = 30  # seconds to wait for a platform callback to be re
 _SETTLE_TIMEOUT = 2  # seconds to let a time change take effect before replying
 _SUN_ENTITY_ID = "sun.sun"
 
-# Captured before time.time is patched, so the offset has a real base.
-# This is the unpatched stdlib clock, used to compute the delta between real and fake time.
-_real_time: Callable[[], float] = time.time
-
 _LOGGER = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class TimeOffset:
-    """The offset between real and fake time, as both a timedelta and seconds.
-
-    Frozen, and replaced wholesale rather than updated in place. Handlers routinely
-    read the offset, change it, then use the earlier value to work out how far time
-    moved; if the offset were mutable that earlier read would see the new value and the
-    difference would come out as zero. Immutability makes holding a reference safe, so
-    that mistake cannot be made.
-
-    Carrying the seconds view alongside the timedelta means the patched clock, which
-    runs on every time.time() call in the process, does not reconstruct one per call.
-    """
-
-    delta: timedelta = timedelta(0)
-    seconds: float = 0.0
-
-    @classmethod
-    def of(cls, delta: timedelta) -> TimeOffset:
-        """Build an offset from a timedelta, deriving the seconds view."""
-        return cls(delta, delta.total_seconds())
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -104,7 +77,6 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         "add_callbacks": {},  # domain -> async_add_entities callback
         "platform_ready": platform_ready_events,
         "frozen_entities": set(),  # entity_ids of frozen template entities
-        "time_offset": TimeOffset(),  # offset applied to all HA time functions
         "sun_override": None,  # None = no override; dict = active sun override
     }
 
@@ -355,21 +327,6 @@ def _apply_sun_helper_patches(hass: HomeAssistant) -> None:
     _LOGGER.info("[ha_test_harness] Monkey-patched sun helper functions for sun override support")
 
 
-def _get_time_offset(hass: HomeAssistant) -> timedelta:
-    """Get the current time offset."""
-    current: TimeOffset = hass.data[DOMAIN]["time_offset"]
-    return current.delta
-
-
-def _set_time_offset(hass: HomeAssistant, offset: timedelta) -> None:
-    """Replace the time offset in hass.data.
-
-    Replaces rather than updates, so that any TimeOffset already handed out keeps the
-    value it had when it was read.
-    """
-    hass.data[DOMAIN]["time_offset"] = TimeOffset.of(offset)
-
-
 def _apply_time_monkey_patch(hass: HomeAssistant) -> None:
     """Move every wall clock Home Assistant can read onto the fake clock at once.
 
@@ -397,21 +354,14 @@ def _apply_time_monkey_patch(hass: HomeAssistant) -> None:
     loop and the connection carrying these commands working normally while wall-clock
     time moves.
 
-    The offset is stored in hass.data[DOMAIN]["time_offset"] and updated via the
-    time/set and time/advance WebSocket commands.
+    Time is frozen at the value stored in hass_wrapper._frozen_time_value and updated
+    via the time/set and time/advance WebSocket commands.
     """
     from homeassistant.helpers import entity as entity_helpers
     from homeassistant.helpers import event as event_helpers
 
-    real_time = _real_time
-    # Capture the integration's own data dict, not the TimeOffset inside it: the offset
-    # is replaced on every time change, so a captured TimeOffset would go stale. The
-    # dict itself is created once in async_setup and never reassigned.
-    domain_data: dict[str, Any] = hass.data[DOMAIN]
-
     def _fake_time() -> float:
-        offset: TimeOffset = domain_data["time_offset"]
-        return real_time() + offset.seconds
+        return float(hass_wrapper.get_fake_time())
 
     def _fake_utcnow() -> datetime:
         return datetime.fromtimestamp(_fake_time(), timezone.utc)
@@ -430,7 +380,7 @@ def _apply_time_monkey_patch(hass: HomeAssistant) -> None:
     event_helpers.time_tracker_utcnow = _fake_utcnow
     event_helpers.time_tracker_timestamp = _fake_time
 
-    _LOGGER.info("[ha_test_harness] Monkey-patched HA time functions for time control")
+    _LOGGER.info("[ha_test_harness] Monkey-patched HA time functions for frozen time control")
 
 
 def _is_home_assistant_timer(handle: asyncio.TimerHandle) -> bool:
@@ -749,9 +699,9 @@ async def ws_unfreeze_entity(hass: HomeAssistant, connection: websocket_api.Acti
 async def ws_time_set(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
     """Handle ha_test_harness/time/set WebSocket command.
 
-    Sets the fake time to an absolute ISO 8601 timestamp. Computes the offset
-    from real time and stores it in hass.data[DOMAIN]["time_offset"]. Fires any
-    scheduled timers that fall within the advanced time window.
+    Sets the frozen time to an absolute ISO 8601 timestamp. Directly sets the frozen
+    timestamp value in hass_wrapper. Fires any scheduled timers that fall within the
+    advanced time window.
     """
     timestamp_str: str = msg["timestamp"]
 
@@ -765,17 +715,17 @@ async def ws_time_set(hass: HomeAssistant, connection: websocket_api.ActiveConne
         connection.send_error(msg["id"], "invalid_timestamp", f"Invalid ISO 8601 timestamp: {timestamp_str!r}: {e}")
         return
 
-    previous_offset = _get_time_offset(hass)
-    offset = target_dt - datetime.fromtimestamp(_real_time(), timezone.utc)
-    _set_time_offset(hass, offset)
+    previous_time = hass_wrapper.get_fake_time()
+    target_timestamp = target_dt.timestamp()
+    hass_wrapper.set_fake_time(target_timestamp)
 
-    _LOGGER.info("[ha_test_harness] Time set to %s (offset: %s)", target_dt.isoformat(), offset)
+    _LOGGER.info("[ha_test_harness] Time set to %s", target_dt.isoformat())
 
-    delta_seconds = (offset - previous_offset).total_seconds()
+    delta_seconds = target_timestamp - previous_time
     _advance_scheduled_timers(hass, delta_seconds)
     await _settle_after_time_change(hass)
 
-    connection.send_result(msg["id"], {"timestamp": target_dt.isoformat(), "offset_seconds": offset.total_seconds()})
+    connection.send_result(msg["id"], {"timestamp": target_dt.isoformat(), "offset_seconds": 0.0})
 
 
 @websocket_api.websocket_command(
@@ -788,9 +738,9 @@ async def ws_time_set(hass: HomeAssistant, connection: websocket_api.ActiveConne
 async def ws_time_advance(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
     """Handle ha_test_harness/time/advance WebSocket command.
 
-    Advances the fake time by the specified number of seconds (relative offset).
-    Adds to the existing offset in hass.data[DOMAIN]["time_offset"]. Fires any
-    scheduled timers that fall within the advanced time window.
+    Advances the frozen time by the specified number of seconds (relative offset).
+    Adds to the existing frozen timestamp in hass_wrapper. Fires any scheduled timers
+    that fall within the advanced time window.
 
     Uses chunked advancement to handle cascading timers: when automations trigger
     during settle and schedule new timers (e.g., delay actions), those timers need
@@ -798,19 +748,18 @@ async def ws_time_advance(hass: HomeAssistant, connection: websocket_api.ActiveC
     each chunk can advance and settle, allowing cascading timers to be picked up.
     """
     seconds: float = msg["seconds"]
-    delta = timedelta(seconds=seconds)
 
-    current_offset = _get_time_offset(hass)
-    new_offset = current_offset + delta
-    _set_time_offset(hass, new_offset)
-    new_time = datetime.fromtimestamp(_real_time(), timezone.utc) + new_offset
+    current_time = hass_wrapper.get_fake_time()
+    new_time = current_time + seconds
+    hass_wrapper.set_fake_time(new_time)
+    new_dt = datetime.fromtimestamp(new_time, timezone.utc)
 
-    _LOGGER.info("[ha_test_harness] Time advanced by %s seconds to %s", seconds, new_time.isoformat())
+    _LOGGER.info("[ha_test_harness] Time advanced by %s seconds to %s", seconds, new_dt.isoformat())
 
     _advance_scheduled_timers(hass, seconds)
     await _settle_after_time_change(hass)
 
-    connection.send_result(msg["id"], {"timestamp": new_time.isoformat(), "offset_seconds": new_offset.total_seconds()})
+    connection.send_result(msg["id"], {"timestamp": new_dt.isoformat(), "offset_seconds": 0.0})
 
 
 @websocket_api.websocket_command(
@@ -822,16 +771,16 @@ async def ws_time_advance(hass: HomeAssistant, connection: websocket_api.ActiveC
 async def ws_time_get(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
     """Handle ha_test_harness/time/get WebSocket command.
 
-    Returns the current fake time as an ISO 8601 timestamp and the current offset.
+    Returns the current frozen time as an ISO 8601 timestamp.
     """
-    offset = _get_time_offset(hass)
-    fake_time = datetime.fromtimestamp(_real_time(), timezone.utc) + offset
+    frozen_timestamp = hass_wrapper.get_fake_time()
+    fake_time = datetime.fromtimestamp(frozen_timestamp, timezone.utc)
 
     connection.send_result(
         msg["id"],
         {
             "timestamp": fake_time.isoformat(),
-            "offset_seconds": offset.total_seconds(),
+            "offset_seconds": 0.0,
         },
     )
 
