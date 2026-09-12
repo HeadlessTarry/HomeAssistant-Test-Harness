@@ -84,7 +84,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         hass.async_create_task(discovery.async_load_platform(hass, domain, DOMAIN, {"domain": domain}, config))
 
     _apply_template_monkey_patch(hass)
-    _apply_time_monkey_patch(hass)
+    _apply_time_monkey_patch()
     _apply_sun_monkey_patch(hass)
     _apply_sun_helper_patches(hass)
 
@@ -327,7 +327,7 @@ def _apply_sun_helper_patches(hass: HomeAssistant) -> None:
     _LOGGER.info("[ha_test_harness] Monkey-patched sun helper functions for sun override support")
 
 
-def _apply_time_monkey_patch(hass: HomeAssistant) -> None:
+def _apply_time_monkey_patch() -> None:
     """Move every wall clock Home Assistant can read onto the fake clock at once.
 
     Home Assistant reads the wall clock through several unrelated routes, and they must
