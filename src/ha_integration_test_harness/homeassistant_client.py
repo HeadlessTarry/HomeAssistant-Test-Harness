@@ -538,17 +538,28 @@ class HomeAssistant:
         history_snippet = self._format_window_history(history, start_dt)
         utc_range = f"(UTC: {start_dt.isoformat()} to {end_dt.isoformat()})"
 
+        last_entry = history[-1]
+        actual_state = last_entry.get("state", "")
+        actual_attrs = last_entry.get("attributes", {})
+        mismatch_lines = self._format_mismatch_lines(expected_state, expected_attributes, actual_state, actual_attrs)
+        mismatch_detail = "\n".join(mismatch_lines) if mismatch_lines else ""
+
         if expected_state is None and expected_attributes is not None:
             attr_keys = ", ".join(sorted(expected_attributes.keys()))
-            return f"Entity {entity_id} did not have expected attributes ({attr_keys}) {mode_desc} between {min_time} and {max_time} {utc_range}.\n{history_snippet}"
+            header = f"Entity {entity_id} did not have expected attributes ({attr_keys}) {mode_desc} between {min_time} and {max_time} {utc_range}."
+        elif expected_attributes is None:
+            state_desc = _PREDICATE_FUNCTION_DESC if callable(expected_state) else f"'{expected_state}'"
+            header = f"Entity {entity_id} was not in state {state_desc} {mode_desc} between {min_time} and {max_time} {utc_range}."
+        else:
+            state_desc = _PREDICATE_FUNCTION_DESC if callable(expected_state) else f"'{expected_state}'"
+            attr_keys = ", ".join(sorted(expected_attributes.keys()))
+            header = f"Entity {entity_id} was not in state {state_desc} with expected attributes ({attr_keys}) {mode_desc} between {min_time} and {max_time} {utc_range}."
 
-        state_desc = _PREDICATE_FUNCTION_DESC if callable(expected_state) else f"'{expected_state}'"
-
-        if expected_attributes is None:
-            return f"Entity {entity_id} was not in state {state_desc} {mode_desc} between {min_time} and {max_time} {utc_range}.\n{history_snippet}"
-
-        attr_keys = ", ".join(sorted(expected_attributes.keys()))
-        return f"Entity {entity_id} was not in state {state_desc} with expected attributes ({attr_keys}) {mode_desc} between {min_time} and {max_time} {utc_range}.\n{history_snippet}"
+        parts = [header]
+        if mismatch_detail:
+            parts.append(mismatch_detail)
+        parts.append(history_snippet)
+        return "\n".join(parts)
 
     def _build_current_state_mismatch_message(
         self,
@@ -570,7 +581,28 @@ class HomeAssistant:
         """
         actual_state = current_state.get("state", "")
         actual_attrs = current_state.get("attributes", {})
-        lines: list[str] = [f"Entity {entity_id} exists but does not match expectations:"]
+        mismatch_lines = self._format_mismatch_lines(expected_state, expected_attributes, actual_state, actual_attrs)
+        return f"Entity {entity_id} exists but does not match expectations:\n" + "\n".join(mismatch_lines)
+
+    def _format_mismatch_lines(
+        self,
+        expected_state: str | Callable[[str], bool] | None,
+        expected_attributes: dict[str, Any] | None,
+        actual_state: str,
+        actual_attrs: dict[str, Any],
+    ) -> list[str]:
+        """Format mismatch lines comparing expected vs actual state and attributes.
+
+        Args:
+            expected_state: Expected state value or predicate.
+            expected_attributes: Expected attributes dict.
+            actual_state: Actual state string.
+            actual_attrs: Actual attributes dict.
+
+        Returns:
+            List of formatted mismatch description lines.
+        """
+        lines: list[str] = []
 
         if expected_state is not None:
             if callable(expected_state):
@@ -587,7 +619,7 @@ class HomeAssistant:
                 elif actual_value != expected_value:
                     lines.append(f"  Attribute '{attr_name}': expected {expected_value!r}, got {actual_value!r}")
 
-        return "\n".join(lines)
+        return lines
 
     def _resolve_time_window(self, min_time: dt_time, max_time: dt_time) -> tuple[datetime, datetime]:
         """Resolve time-of-day pairs to UTC datetimes using the fake clock's date.
