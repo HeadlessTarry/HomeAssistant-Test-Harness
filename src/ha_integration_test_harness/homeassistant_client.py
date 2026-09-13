@@ -887,7 +887,7 @@ class HomeAssistant:
 
         url = f"{self._base_url}/api/history/period/{start_time.isoformat()}"
         params = {"filter_entity_id": entity_id, "end": end_time.isoformat()}
-        logger.info(f"Querying history for {entity_id}: {url} with params {params}")
+        logger.debug(f"Querying history for {entity_id}: {url} with params {params}")
         try:
             headers = {"Authorization": f"Bearer {self._access_token}"}
             response = requests.get(url, headers=headers, params=params, timeout=self._timeout)
