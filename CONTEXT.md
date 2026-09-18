@@ -14,11 +14,23 @@ Created programmatically per-test, destroyed after the test completes.
 Provides minimal implementation to satisfy test needs without mocking HA's entity system.
 _Avoid_: Mock entity, test entity, dynamic entity
 
+**Per-test entity**:
+A virtual entity created within a test function via `given_an_entity()`.
+Automatically destroyed after the test completes.
+Synonymous with virtual entity in current usage.
+_Avoid_: Test-only entity, temporary entity
+
 **Session-scoped entity**:
 An entity defined in YAML by the downstream project, registered with HA during startup (before HA comes online).
 Available to all tests in the session.
 Currently implemented as "persistent entities" via `ha_persistent_entities_path` config.
-_Avoid_: Persistent entity, pre-registered entity, bootstrap entity
+_Avoid_: Pre-registered entity, bootstrap entity
+
+**Persistent entity**:
+Synonym for session-scoped entity.
+The term used in code (`ha_persistent_entities_path`) and documentation.
+Registered during container startup, available throughout the test session.
+_Avoid_: Bootstrap entity, pre-loaded entity
 
 **Real entity**:
 An entity that exists in HA without the harness — from the user's production config, HA native entities (sun.sun, zone.home), or integration-provided entities.
@@ -113,5 +125,6 @@ Each test must be independent and not affected by other tests. This is achieved 
 
 - **persistent entities** vs **session-scoped entities**:
   The code and config files use "persistent entities" (e.g., `ha_persistent_entities_path`),
-  but the domain term is "session-scoped entities".
-  This naming inconsistency should be addressed in a future refactor.
+  but the conceptual term is "session-scoped entities".
+  Both terms are now accepted in CONTEXT.md.
+  Tracking: [GitHub Issue #213](https://github.com/HeadlessTarry/HomeAssistant-Test-Harness/issues/213)
