@@ -32,11 +32,11 @@ def test_with_manual_cleanup(home_assistant):
 
 - **Use `given_an_entity()`**: For most test entities. Entities are registered in the entity registry
   (have a `unique_id`), appear in the HA UI, respond to service calls (`turn_on`, `turn_off`), and can be
-  combined with `given_entity_has()` for area/label assignment.
+  configured with area/label assignment via the builder pattern.
   Supported domains: `sensor`, `binary_sensor`, `switch`, `light`, `media_player`, `select`.
 - **Use `set_state()`**: For raw state injection where registry registration is not needed — e.g. providing
-  a synthetic sensor reading that an automation reads via a template. Entities created this way cannot be
-  used with `given_entity_has()`.
+  a synthetic sensor reading that an automation reads via a template. Entities created this way are not
+  registered in the entity registry.
 
 ## Factory Fixtures
 
@@ -48,14 +48,14 @@ import pytest
 @pytest.fixture
 def create_entity(home_assistant):
     """Factory fixture with automatic cleanup via given_an_entity."""
-    def _create(entity_id, state, **attributes):
-        home_assistant.given_an_entity(entity_id, state, attributes)
+    def _create(entity_id, state):
+        home_assistant.given_an_entity(entity_id, state)
         return entity_id
 
     return _create
 
 def test_multiple_entities(create_entity):
-    light1 = create_entity("light.test1", "on", brightness=255)
+    light1 = create_entity("light.test1", "on")
     light2 = create_entity("light.test2", "off")
     # Entities automatically cleaned up after test
 ```
@@ -89,19 +89,19 @@ def test_multiple_entities(create_entity_manual):
 
 ## Testing Area and Label Based Automations
 
-Use `given_entity_has()` to temporarily assign an area or labels to an entity for the duration of a test.
+Use the `EntityBuilder` returned by `given_an_entity()` to temporarily assign an area or labels to an entity for the duration of a test.
 The harness automatically creates any missing area or label registry entries and restores the entity's original configuration after the test.
 
-`given_entity_has()` works with both persistent entities and per-test entities created via `given_an_entity()`.
+The builder works with both persistent entities and per-test entities created via `given_an_entity()`.
 This means you can create a test-specific entity and immediately assign it an area or label — all within a single test:
 
 ```python
 def test_per_test_entity_with_area_and_label(home_assistant):
     # Create a per-test light entity (registered in the entity registry)
-    home_assistant.given_an_entity("light.test_light", "off")
-
-    # Assign area and label — works because given_an_entity() registers the entity
-    home_assistant.given_entity_has("light.test_light", area="living_room", labels=["night_mode"])
+    # and assign area and label via builder chain
+    home_assistant.given_an_entity("light.test_light", "off") \
+        .in_area("living_room") \
+        .with_labels(["night_mode"])
 
     # Trigger automation targeting by label or area
     home_assistant.call_action("input_button", "press", {"entity_id": "input_button.label_automation_trigger"})
@@ -112,7 +112,8 @@ def test_per_test_entity_with_area_and_label(home_assistant):
 ```python
 def test_label_based_automation(home_assistant):
     # Assign the label — created in the label registry if it doesn't exist
-    home_assistant.given_entity_has("light.living_room", labels=["night_mode"])
+    home_assistant.given_an_entity("light.living_room", "off") \
+        .with_labels(["night_mode"])
 
     home_assistant.call_action("input_button", "press", {"entity_id": "input_button.label_automation_trigger"})
     home_assistant.assert_entity_state("light.living_room", "on", timeout=10)
@@ -120,7 +121,8 @@ def test_label_based_automation(home_assistant):
 
 def test_area_based_automation(home_assistant):
     # Assign the area — created in the area registry if it doesn't exist
-    home_assistant.given_entity_has("light.living_room", area="living_room")
+    home_assistant.given_an_entity("light.living_room", "off") \
+        .in_area("living_room")
 
     home_assistant.call_action("input_button", "press", {"entity_id": "input_button.area_automation_trigger"})
     home_assistant.assert_entity_state("light.living_room", "on", timeout=10)
@@ -152,25 +154,4 @@ Home Assistant automations can target entities by area or label in two ways, and
 When using template functions (`area_entities()` / `label_entities()`), the area or label **must exist as a registry entry** for the function to return any results.
 When using direct target keys (`area_id:` / `label_id:`), no registry entry is needed — Home Assistant resolves the assignment directly from the entity registry.
 
-`given_entity_has()` creates the necessary registry entries for both cases, so your tests work regardless of which targeting style your automations use.
-
-## Time Machine Isolation
-
-Only request `time_machine` fixture in tests that need time manipulation:
-
-```python
-from datetime import timedelta
-
-# Don't do this - time machine in every test
-def test_normal(home_assistant, time_machine):
-    pass
-
-# Do this - only when needed
-def test_time_based(home_assistant, time_machine):
-    # Always explicitly set initial time conditions
-    time_machine.fast_forward(timedelta(days=1))
-    # ... test logic ...
-```
-
-**Important:** The `time_machine` fixture is session-scoped, so time persists across all tests and cannot be reset. Each test using time manipulation should
-explicitly set its initial time state.
+The `EntityBuilder` creates the necessary registry entries for both cases, so your tests work regardless of which targeting style your automations use.

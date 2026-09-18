@@ -33,7 +33,7 @@ your configuration works correctly in an environment that mirrors production.
 - **[docs/architecture.md](docs/architecture.md)** — When understanding the test environment: container layout, startup sequence, parallel execution, HA image override
 - **[docs/writing-tests.md](docs/writing-tests.md)** — When writing tests: basic patterns, time-based tests, calling actions, polling
 - **[docs/persistent-entities.md](docs/persistent-entities.md)** — When you need entities available across multiple tests: YAML configuration, startup behavior, comparison with per-test entities
-- **[docs/best-practices.md](docs/best-practices.md)** — When optimizing test patterns: cleanup strategies, factory fixtures, area/label testing, time machine isolation
+- **[docs/best-practices.md](docs/best-practices.md)** — When optimizing test patterns: cleanup strategies, factory fixtures, area/label testing
 - **[docs/fixtures.md](docs/fixtures.md)** — When understanding available fixtures: docker, home_assistant, app_daemon, time_machine
 - **[docs/home-assistant-fixture.md](docs/home-assistant-fixture.md)** — When interacting with Home Assistant: entity management, state assertions, action calls, area/label assignment
 - **[docs/app-daemon-fixture.md](docs/app-daemon-fixture.md)** — When working with AppDaemon: basic API access

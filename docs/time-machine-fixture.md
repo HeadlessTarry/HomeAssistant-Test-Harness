@@ -5,7 +5,7 @@
 Manages time manipulation for deterministic testing of time-based automations.
 
 **IMPORTANT LIMITATION**: Time can only move forward, never backward. The fixture is session-scoped, meaning time persists
-across all tests in the session and cannot be reset to real time or an earlier point. This is a fundamental constraint of the Home Assistant container.
+across all tests in the session and cannot be reset to real time or an earlier point. This is a fundamental constraint of the Home Assistant container, which employs a monotonic clock.
 
 ## API
 
@@ -298,13 +298,5 @@ def test_heating_schedule(home_assistant: HomeAssistant, time_machine: TimeMachi
 
     # NOTE: Time remains at Monday 7:00 AM for subsequent test
 ```
-
-All fixtures (`docker`, `home_assistant`, `app_daemon`, `time_machine`) are session-scoped:
-
-- Created once when first test requests them
-- Shared across all tests in the session
-- Torn down after all tests complete
-- Provides fast test execution (containers start once)
-- **Time and entity states persist across tests**
 
 **Important:** Because time persists and cannot be reset, time-dependent test scenarios should always explicitly set their initial time conditions.

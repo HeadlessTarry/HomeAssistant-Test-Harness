@@ -163,9 +163,9 @@ def test_sunset_automation(home_assistant, time_machine):
     home_assistant.assert_entity_state("light.living_room", "on", timeout=5)
 ```
 
-## Comparison: Per-Test vs. Persistent
+## Comparison: Per-Test Entity vs. Persistent Entity
 
-| Feature | Per-Test (`given_an_entity`) | Persistent (YAML file) |
+| Feature | Per-Test Entity (`given_an_entity`) | Persistent Entity (YAML file) |
 |---------|------------------------------|------------------------|
 | Creation | During test via Python | At container startup |
 | Scope | Single test function | Entire session |

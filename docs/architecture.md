@@ -11,7 +11,7 @@ Integration tests use a Docker Compose environment to run isolated instances of 
 │  Test Suite (pytest)                                        │
 │  ├── Uses harness package (DockerComposeManager,            │
 │  │   HomeAssistant, AppDaemon, TimeMachine)                 │
-│  └── Interacts via HTTP APIs                                │
+│  └── Interacts via HTTP/WebSocket APIs                      │
 └─────────────────────────────────────────────────────────────┘
                                │
                                ▼
@@ -22,9 +22,11 @@ Integration tests use a Docker Compose environment to run isolated instances of 
 │  │  Port: 8123 (ephemeral)│   │  Port: 5050 (ephemeral)  │  │
 │  │  ├── Configuration     │   │  ├── Apps                │  │
 │  │  │   (from repo)       │   │  │   (from repo)         │  │
-│  │  ├── Automations       │   │  ├── Connected to HA     │  │
-│  │  ├── Scripts           │   │  └── API enabled         │  │
-│  │  └── Templates         │   │                          │  │
+│  │  │   ├── Automations   │   │  ├── Connected to HA     │  │
+│  │  │   ├── Scripts       │   │  └── API enabled         │  │
+│  │  │   └── Templates     │   │                          │  │
+│  │  └── ha_test_harness   │   │                          │  │
+│  │      (custom component)│   │                          │  │
 │  └────────────────────────┘   └──────────────────────────┘  │
 │             │                              │                │
 │             └──────────┬───────────────────┘                │
@@ -36,6 +38,9 @@ Integration tests use a Docker Compose environment to run isolated instances of 
 │              └──────────────────┘                           │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+The `ha_test_harness` custom component is deployed into the Home Assistant instance to enable
+the test fixtures to interact with HA over WebSocket commands for entity registration and management.
 
 ## Startup Sequence
 
