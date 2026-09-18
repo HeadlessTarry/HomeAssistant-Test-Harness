@@ -5,7 +5,7 @@ A pytest plugin for integration testing Home Assistant and AppDaemon configurati
 [![Continuous Integration][ci-badge]][ci-url]
 [![Quality Gate Status][quality-badge]][quality-url]
 [![License: MIT][license-badge]][license-url]
-[![Python 3.14+][python-badge]][python-url]
+[![Python 3.14.2+][python-badge]][python-url]
 [![Code style: black][black-badge]][black-url]
 
 [ci-badge]: https://github.com/HeadlessTarry/HomeAssistant-Test-Harness/actions/workflows/ci.yaml/badge.svg
@@ -14,98 +14,41 @@ A pytest plugin for integration testing Home Assistant and AppDaemon configurati
 [quality-url]: https://sonarcloud.io/summary/new_code?id=HeadlessTarry_HomeAssistant-Test-Harness
 [license-badge]: https://img.shields.io/badge/License-MIT-yellow.svg
 [license-url]: https://opensource.org/licenses/MIT
-[python-badge]: https://img.shields.io/badge/python-3.14+-blue.svg
+[python-badge]: https://img.shields.io/badge/python-3.14.2+-blue.svg
 [python-url]: https://www.python.org/downloads/
 [black-badge]: https://img.shields.io/badge/code%20style-black-000000.svg
 [black-url]: https://github.com/psf/black
 
-## Features
+## ℹ️ About
 
-- **Docker-based test environment**: Fully isolated Home Assistant and AppDaemon instances
-- **Pytest fixtures**: Session-scoped containers with automatic cleanup
-- **Flexible configuration**: Uses environment variables or current directory
-- **API clients**: Python clients for Home Assistant and AppDaemon APIs
-- **Time manipulation**: Freeze and advance time for deterministic testing
-- **Parallel test support**: Dynamic port allocation for concurrent test runs
+A pytest plugin (`ha_integration_test_harness`) for integration testing Home Assistant and AppDaemon
+configurations using real Docker containers — no mocks. Tests run against real instances, ensuring
+your configuration works correctly in an environment that mirrors production.
 
-## Quick Start
+## 📚 Documentation
 
-### Installation
+- **[CONTEXT.md](CONTEXT.md)** — When understanding domain terminology: virtual entities, persistent entities, test rollback, downstream projects
+- **[docs/installation.md](docs/installation.md)** — When installing the harness: pip, poetry, verification, requirements
+- **[docs/usage.md](docs/usage.md)** — When getting started: auto-discovery, container lifecycle, configuration requirements
+- **[docs/architecture.md](docs/architecture.md)** — When understanding the test environment: container layout, startup sequence, parallel execution, HA image override
+- **[docs/writing-tests.md](docs/writing-tests.md)** — When writing tests: basic patterns, time-based tests, calling actions, polling
+- **[docs/persistent-entities.md](docs/persistent-entities.md)** — When you need entities available across multiple tests: YAML configuration, startup behavior, comparison with per-test entities
+- **[docs/best-practices.md](docs/best-practices.md)** — When optimizing test patterns: cleanup strategies, factory fixtures, area/label testing
+- **[docs/fixtures.md](docs/fixtures.md)** — When understanding available fixtures: docker, home_assistant, app_daemon, time_machine
+- **[docs/home-assistant-fixture.md](docs/home-assistant-fixture.md)** — When interacting with Home Assistant: entity management, state assertions, action calls, area/label assignment
+- **[docs/app-daemon-fixture.md](docs/app-daemon-fixture.md)** — When working with AppDaemon: basic API access
+- **[docs/time-machine-fixture.md](docs/time-machine-fixture.md)** — When testing time-based automations: forward-only constraint, DST handling, session-scoped persistence, sunrise/sunset presets
+- **[docs/troubleshooting.md](docs/troubleshooting.md)** — When encountering issues: common errors, debugging tips
+- **[docs/development.md](docs/development.md)** — When contributing to the harness: development environment, running checks, code style, releases
+- **[docs/adr/](docs/adr/)** — When understanding why a design decision was made: architecture decision records
 
-Since this is a pytest plugin for testing, install it as a **dev dependency** in your Home Assistant configuration repository.
-
-Add to your `pyproject.toml`:
-
-```toml
-[project.optional-dependencies]
-dev = [
-    "ha-integration-test-harness @ git+https://github.com/HeadlessTarry/HomeAssistant-Test-Harness.git",
-]
-```
-
-Then install:
-
-```bash
-pip install -e ".[dev]"
-```
-
-See the [Installation Guide](docs/installation.md) for alternative methods.
-
-### Requirements
-
-- Python 3.14.2+
-- Docker Engine
-- Docker Compose V2
-- Home Assistant configuration directory with `configuration.yaml`
-- [Optional] AppDaemon directory with `apps.yaml`
-
-### Write a Test
-
-```python
-def test_automation(home_assistant):
-    """Test that an automation works correctly."""
-    # Set entity state
-    home_assistant.set_state("input_boolean.test_mode", "on")
-
-    # Trigger automation
-    home_assistant.set_state("binary_sensor.motion", "on")
-
-    # Assert expected outcome (polls with timeout)
-    home_assistant.assert_entity_state("light.living_room", "on", timeout=10)
-```
-
-### Run Tests
-
-```bash
-pytest
-```
-
-The plugin automatically:
-
-1. Detects your Home Assistant configuration directory (via `HOME_ASSISTANT_CONFIG_ROOT` env var or `home_assistant/` subdirectory)
-2. Detects your AppDaemon configuration directory (via `APPDAEMON_CONFIG_ROOT` env var or `appdaemon/` subdirectory)
-3. Validates `configuration.yaml` exists in Home Assistant configuration directory
-4. Validates `apps/apps.yaml` exists in AppDaemon directory (warning only)
-5. Mounts configuration directories into Docker containers
-6. Starts Home Assistant and AppDaemon
-7. Provides fixtures for testing
-
-## Documentation
-
-- [Installation Guide](docs/installation.md)
-- [Usage Guide](docs/usage.md)
-- [Available Fixtures](docs/fixtures.md)
-- [Troubleshooting](docs/troubleshooting.md)
-- [Development Guide](docs/development.md)
-- [Architecture Decisions](docs/adr/)
-
-## Links
+## 🔗 Links
 
 - **Repository**: <https://github.com/HeadlessTarry/HomeAssistant-Test-Harness>
 - **Issues**: <https://github.com/HeadlessTarry/HomeAssistant-Test-Harness/issues>
 - **Changelog**: <https://github.com/HeadlessTarry/HomeAssistant-Test-Harness/releases>
 
-## Contributing
+## 🤝 Contributing
 
 Contributions are welcome! Please see our [Contributing Guide](CONTRIBUTING.md) for details on:
 
@@ -116,10 +59,10 @@ Contributions are welcome! Please see our [Contributing Guide](CONTRIBUTING.md) 
 
 Please read our [Code of Conduct](CODE_OF_CONDUCT.md) before contributing.
 
-## Security
+## 🔒 Security
 
 For security issues, please see our [Security Policy](SECURITY.md) for responsible disclosure guidelines.
 
-## License
+## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

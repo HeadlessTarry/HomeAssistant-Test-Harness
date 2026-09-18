@@ -2,109 +2,42 @@
 
 This file provides guidance to AI agents when working with code in this repository.
 
-## ⚠️ Mandatory First Steps
-
-**Before making ANY changes to this codebase:**
-
-1. Create a git worktree (see "Worktree Setup" below)
-2. Run `./setup_dev_env.sh` in the worktree
-3. Only then start making changes
-
-**Before committing ANY changes:**
-
-1. Run `./run_checks.sh` and fix ALL failures
-2. Repeat until all checks pass
-3. Only then commit
-
-These are not optional. Skipping them will cause CI failures.
-
-## What This Is
+## 🏠 Overview
 
 A pytest plugin (`ha_integration_test_harness`) for integration testing Home Assistant and AppDaemon
 configurations using real Docker containers — no mocks.
 
-## Commands
+## 🚪 Gate
 
-```bash
-# Initial setup (installs deps via uv, sets up pre-commit, creates .env)
-./setup_dev_env.sh
+**Before making changes:** Create a worktree, then run `./setup_dev_env.sh`.
+See **[docs/development.md](docs/development.md)** — When setting up the development environment:
+worktrees, prerequisites, VS Code, interactive environment.
 
-# Full validation: pre-commit hooks + build + install test + example tests
-./run_checks.sh
+**Before committing:** Run `./run_checks.sh` and fix all failures.
+See **[docs/development.md](docs/development.md#running-checks)** — When running checks:
+pre-commit hooks, unit tests, integration tests, and what each check validates.
 
-# Run example tests
-pytest examples/
+These are not optional. Skipping them will cause CI failures.
 
-# Run a single test
-pytest examples/test_basic_usage.py::test_entity_state_with_auto_cleanup
-```
+## 📚 Documentation
 
-## Worktree Setup
+- **[CONTEXT.md](CONTEXT.md)** — When understanding domain terminology: virtual entities, persistent entities, test rollback, downstream projects
+- **[docs/installation.md](docs/installation.md)** — When installing the harness: pip, poetry, verification, requirements
+- **[docs/usage.md](docs/usage.md)** — When getting started: auto-discovery, container lifecycle, configuration requirements
+- **[docs/architecture.md](docs/architecture.md)** — When understanding the test environment: container layout, startup sequence, parallel execution, HA image override
+- **[docs/writing-tests.md](docs/writing-tests.md)** — When writing tests: basic patterns, time-based tests, calling actions, polling
+- **[docs/persistent-entities.md](docs/persistent-entities.md)** — When you need entities available across multiple tests: YAML configuration, startup behavior, comparison with per-test entities
+- **[docs/best-practices.md](docs/best-practices.md)** — When optimizing test patterns: cleanup strategies, factory fixtures, area/label testing
+- **[docs/fixtures.md](docs/fixtures.md)** — When understanding available fixtures: docker, home_assistant, app_daemon, time_machine
+- **[docs/home-assistant-fixture.md](docs/home-assistant-fixture.md)** — When interacting with Home Assistant: entity management, state assertions, action calls, area/label assignment
+- **[docs/app-daemon-fixture.md](docs/app-daemon-fixture.md)** — When working with AppDaemon: basic API access
+- **[docs/time-machine-fixture.md](docs/time-machine-fixture.md)** — When testing time-based automations: forward-only constraint, DST handling, session-scoped persistence, sunrise/sunset presets
+- **[docs/troubleshooting.md](docs/troubleshooting.md)** — When encountering issues: common errors, debugging tips
+- **[docs/development.md](docs/development.md)** — When contributing to the harness: development environment, running checks, code style, releases
+- **[docs/adr/](docs/adr/)** — When understanding why a design decision was made: architecture decision records
 
-### Sequence: create worktree → run setup → make changes
+## 🤖 Agent skills
 
-```bash
-git worktree add .worktrees/feature-name -b feature/feature-name
-cd .worktrees/feature-name
-./setup_dev_env.sh
-```
-
-Worktrees have isolated virtual environments. The setup script installs dependencies
-(including `pre-commit`) into the worktree's venv and configures git hooks. Skipping
-this step will cause pre-commit hooks to fail or be unavailable.
-
-## Commit Workflow
-
-**Before committing, always run `./run_checks.sh` and fix all failures.**
-
-Never bypass validation with individual commands like `uv run pre-commit run`
-or `git commit --no-verify`. The `./run_checks.sh` script performs comprehensive
-validation (pre-commit hooks, build, install test, example tests) that individual
-commands cannot replicate.
-
-If `./run_checks.sh` fails:
-
-1. Fix the underlying issues (formatting, linting, type errors, test failures)
-2. Re-run `./run_checks.sh` until all checks pass
-3. Only then commit and push
-
-Pre-commit hooks enforce code quality standards (black, isort, flake8, mypy, yamllint, markdownlint). These must pass before code is merged.
-
-## Common Mistakes to Avoid
-
-❌ **Don't** run `pytest` directly without first running `./setup_dev_env.sh`
-❌ **Don't** commit without running `./run_checks.sh` first
-❌ **Don't** use `uv run pre-commit run` instead of `./run_checks.sh`
-❌ **Don't** skip worktree setup - each worktree needs its own environment
-❌ **Don't** make changes on the main branch - always use a worktree
-
-## Documentation
-
-- [Architecture & key components](docs/development.md)
-- [Writing tests](docs/usage.md)
-- [Available fixtures](docs/fixtures.md)
-- [Troubleshooting](docs/troubleshooting.md)
-- [Installation](docs/installation.md)
-- [Architecture decisions](docs/adr/)
-
-## Important Constraints
-
-- **Package name**: `ha_integration_test_harness` (underscores)
-- **Runtime deps**: Only `requests`, `python-dateutil`, `PyYAML`, `websocket-client`
-- **Config mounts are read-write** (not `:ro`)
-- **Error messages** for config problems must include the GitHub usage docs link
-- **Atomic file writes**: temp-file-then-move
-
-## Agent skills
-
-### Issue tracker
-
-Issues live in GitHub Issues. See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-Default label vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-Single-context layout: `CONTEXT.md` + `docs/adr/` at repo root. See `docs/agents/domain.md`.
+- **[docs/agents/issue-tracker.md](docs/agents/issue-tracker.md)** — When filing or triaging issues: GitHub Issues workflow
+- **[docs/agents/triage-labels.md](docs/agents/triage-labels.md)** — When applying triage labels: canonical label vocabulary
+- **[docs/agents/domain.md](docs/agents/domain.md)** — When navigating domain docs: CONTEXT.md layout, ADR conventions
