@@ -70,6 +70,9 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
     Adds the 'ha_image' config key to allow test suites to specify a custom
     Home Assistant Docker image (e.g., "homeassistant/home-assistant:2026.7").
+
+    Adds the 'ha_exclude_files' config key to allow test suites to specify
+    a list of file paths or glob patterns to exclude during config staging.
     """
     parser.addini(
         "ha_persistent_entities_path",
@@ -79,6 +82,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addini(
         "ha_image",
         "Home Assistant Docker image to use (e.g., 'homeassistant/home-assistant:2026.7')",
+        default=None,
+    )
+    parser.addini(
+        "ha_exclude_files",
+        "List of file paths or glob patterns (relative to Home Assistant configuration root) to exclude during configuration deployment",
+        type="args",
         default=None,
     )
 
@@ -123,6 +132,9 @@ def docker(request: pytest.FixtureRequest, ha_image: Optional[str]) -> Generator
     Persistent entities can be registered during container startup by providing
     a YAML file path via the 'ha_persistent_entities_path' pytest configuration option.
 
+    Files can be excluded from config staging by providing a list of paths or glob
+    patterns via the 'ha_exclude_files' pytest configuration option.
+
     The containers are automatically cleaned up after all tests in the session complete.
 
     Args:
@@ -149,9 +161,16 @@ def docker(request: pytest.FixtureRequest, ha_image: Optional[str]) -> Generator
             entities_path = Path(str(inipath)).parent / entities_path
         persistent_entities_path = str(entities_path)
 
+    # Get exclude files from pytest configuration if provided
+    exclude_files = request.config.getini("ha_exclude_files")
+
     manager: Optional[DockerComposeManager] = None
     try:
-        manager = DockerComposeManager(persistent_entities_path=persistent_entities_path, ha_image=ha_image)
+        manager = DockerComposeManager(
+            persistent_entities_path=persistent_entities_path,
+            ha_image=ha_image,
+            exclude_files=exclude_files,
+        )
         # Store the manager in session stash so it can be accessed by hooks
         request.session.stash[_docker_manager_key] = manager
         manager.start()
