@@ -11,7 +11,7 @@ import tempfile
 import time
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import requests
 import yaml
@@ -85,7 +85,7 @@ class DockerComposeManager:
     Docker assigns ephemeral ports automatically to enable parallel test runs.
     """
 
-    def __init__(self, persistent_entities_path: Optional[str] = None, ha_image: Optional[str] = None) -> None:
+    def __init__(self, persistent_entities_path: Optional[str] = None, ha_image: Optional[str] = None, exclude_files: Optional[list[str]] = None) -> None:
         """Initialize the Docker Compose manager.
 
         Sets up paths and generates a unique run ID for container isolation.
@@ -97,6 +97,9 @@ class DockerComposeManager:
             ha_image: Optional Docker image to use for Home Assistant (e.g.,
                 "homeassistant/home-assistant:2026.7"). If not provided, defaults to
                 the image specified in docker-compose.yaml (typically stable).
+            exclude_files: Optional list of file paths or glob patterns (relative to HA
+                config root) to exclude during config staging. Non-matching patterns are
+                silently ignored.
 
         Raises:
             DockerError: If configuration.yaml is not found in the detected Home Assistant root directory.
@@ -104,6 +107,7 @@ class DockerComposeManager:
         """
         self._run_id = uuid.uuid4().hex
         self._ha_image = ha_image
+        self._exclude_files = exclude_files or []
 
         # Detect Home Assistant configuration root
         self._ha_config_root = self._detect_ha_config_root()
@@ -190,6 +194,60 @@ class DockerComposeManager:
         logger.info(f"Loaded persistent entities file: {entity_file.absolute()}")
         return entity_file.absolute()
 
+    def _should_exclude_file(self, file_path: Path) -> bool:
+        """Check if a file should be excluded from staging.
+
+        Args:
+            file_path: Absolute path to the file to check.
+
+        Returns:
+            True if the file matches any exclusion pattern, False otherwise.
+        """
+        if not self._exclude_files:
+            return False
+
+        # Get relative path from HA config root
+        try:
+            rel_path = file_path.relative_to(self._ha_config_root)
+        except ValueError:
+            # File is not under HA config root
+            return False
+
+        rel_path_str = str(rel_path)
+
+        # Check each exclusion pattern
+        for pattern in self._exclude_files:
+            # Exact match
+            if rel_path_str == pattern:
+                return True
+            # Glob pattern match - use fnmatch for proper glob behavior
+            import fnmatch
+
+            if fnmatch.fnmatch(rel_path_str, pattern):
+                return True
+
+        return False
+
+    def _get_copy_ignore_function(self) -> Callable[[str, list[str]], set[str]]:
+        """Return a function for shutil.copytree that excludes files matching exclusion patterns.
+
+        Returns:
+            A function compatible with shutil.copytree's ignore parameter.
+        """
+
+        def ignore_func(directory: str, contents: list[str]) -> set[str]:
+            ignored = set()
+            dir_path = Path(directory)
+
+            for item_name in contents:
+                item_path = dir_path / item_name
+                if self._should_exclude_file(item_path):
+                    ignored.add(item_name)
+
+            return ignored
+
+        return ignore_func
+
     def _stage_ha_config_with_entities(self) -> Path:
         """Stage Home Assistant config directory with bundled integration and optional entities overlay.
 
@@ -217,8 +275,15 @@ class DockerComposeManager:
                     continue
                 src = self._ha_config_root / item.name
                 dst = staging_dir / item.name
+
+                # Check if this file/directory should be excluded
+                if self._should_exclude_file(src):
+                    logger.debug(f"Excluding from staging: {src}")
+                    continue
+
                 if src.is_dir():
-                    shutil.copytree(src, dst, symlinks=False, ignore=shutil.ignore_patterns("__pycache__", ".storage"))
+                    # Use custom ignore function to handle exclusion patterns within directories
+                    shutil.copytree(src, dst, symlinks=False, ignore=self._get_copy_ignore_function())
                 else:
                     shutil.copy2(src, dst)
 
