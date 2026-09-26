@@ -86,7 +86,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     )
     parser.addini(
         "ha_exclude_files",
-        "List of file paths or glob patterns (relative to HA config root) to exclude during config staging",
+        "List of file paths or glob patterns (relative to Home Assistant configuration root) to exclude during configuration deployment",
         type="args",
         default=None,
     )

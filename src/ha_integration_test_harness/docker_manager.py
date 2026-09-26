@@ -1,5 +1,6 @@
 """Docker Compose manager for integration test environment."""
 
+import fnmatch
 import json
 import logging
 import os
@@ -97,8 +98,8 @@ class DockerComposeManager:
             ha_image: Optional Docker image to use for Home Assistant (e.g.,
                 "homeassistant/home-assistant:2026.7"). If not provided, defaults to
                 the image specified in docker-compose.yaml (typically stable).
-            exclude_files: Optional list of file paths or glob patterns (relative to HA
-                config root) to exclude during config staging. Non-matching patterns are
+            exclude_files: Optional list of file paths or glob patterns (relative to Home Assistant
+                configuration root) to exclude during configuration deployment. Non-matching patterns are
                 silently ignored.
 
         Raises:
@@ -221,8 +222,6 @@ class DockerComposeManager:
             if rel_path_str == pattern:
                 return True
             # Glob pattern match - use fnmatch for proper glob behavior
-            import fnmatch
-
             if fnmatch.fnmatch(rel_path_str, pattern):
                 return True
 
