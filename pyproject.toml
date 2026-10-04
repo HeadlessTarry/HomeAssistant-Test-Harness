@@ -69,6 +69,7 @@ ha_integration_test_harness = [
 
 [tool.pytest.ini_options]
 testpaths = ["examples"]
+addopts = "-p pytester"
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
