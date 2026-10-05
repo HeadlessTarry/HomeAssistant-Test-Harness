@@ -126,5 +126,5 @@ Each test must be independent and not affected by other tests. This is achieved 
 - **persistent entities** vs **session-scoped entities**:
   The code and config files use "persistent entities" (e.g., `ha_persistent_entities_path`),
   but the conceptual term is "session-scoped entities".
-  Both terms are now accepted in CONTEXT.md.
+  Both terms are now accepted in GLOSSARY.md.
   Tracking: [GitHub Issue #213](https://github.com/HeadlessTarry/HomeAssistant-Test-Harness/issues/213)

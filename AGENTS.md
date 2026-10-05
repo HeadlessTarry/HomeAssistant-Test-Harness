@@ -21,7 +21,7 @@ These are not optional. Skipping them will cause CI failures.
 
 ## 📚 Documentation
 
-- **[CONTEXT.md](CONTEXT.md)** — When understanding domain terminology: virtual entities, persistent entities, test rollback, downstream projects
+- **[GLOSSARY.md](GLOSSARY.md)** — When understanding domain terminology: virtual entities, persistent entities, test rollback, downstream projects
 - **[docs/installation.md](docs/installation.md)** — When installing the harness: pip, poetry, verification, requirements
 - **[docs/usage.md](docs/usage.md)** — When getting started: auto-discovery, container lifecycle, configuration requirements
 - **[docs/architecture.md](docs/architecture.md)** — When understanding the test environment: container layout, startup sequence, parallel execution, HA image override
@@ -40,4 +40,4 @@ These are not optional. Skipping them will cause CI failures.
 
 - **[docs/agents/issue-tracker.md](docs/agents/issue-tracker.md)** — When filing or triaging issues: GitHub Issues workflow
 - **[docs/agents/triage-labels.md](docs/agents/triage-labels.md)** — When applying triage labels: canonical label vocabulary
-- **[docs/agents/domain.md](docs/agents/domain.md)** — When navigating domain docs: CONTEXT.md layout, ADR conventions
+- **[docs/agents/domain.md](docs/agents/domain.md)** — When navigating domain docs: GLOSSARY.md layout, ADR conventions
