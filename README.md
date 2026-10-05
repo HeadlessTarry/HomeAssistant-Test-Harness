@@ -27,7 +27,7 @@ your configuration works correctly in an environment that mirrors production.
 
 ## 📚 Documentation
 
-- **[CONTEXT.md](CONTEXT.md)** — When understanding domain terminology: virtual entities, persistent entities, test rollback, downstream projects
+- **[GLOSSARY.md](GLOSSARY.md)** — When understanding domain terminology: virtual entities, persistent entities, test rollback, downstream projects
 - **[docs/installation.md](docs/installation.md)** — When installing the harness: pip, poetry, verification, requirements
 - **[docs/usage.md](docs/usage.md)** — When getting started: auto-discovery, container lifecycle, configuration requirements
 - **[docs/architecture.md](docs/architecture.md)** — When understanding the test environment: container layout, startup sequence, parallel execution, HA image override
