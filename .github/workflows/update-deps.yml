@@ -14,7 +14,7 @@ name: 🔒 Weekly Dependency Refresh
 #
 # IMPORTANT: Neither Dependabot nor this workflow can push a transitive dep
 # beyond its parent's version upper bound. Resolving those vulnerabilities
-# requires upgrading the parent dependency (e.g. homeassistant-stubs).
+# requires upgrading the parent dependency (e.g. homeassistant).
 
 on: # yamllint disable-line rule:truthy
   schedule:

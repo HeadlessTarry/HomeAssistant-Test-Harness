@@ -33,6 +33,8 @@ import hass_wrapper
 import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.components.template.template_entity import TemplateEntity
+from homeassistant.components.websocket_api.connection import ActiveConnection
+from homeassistant.components.websocket_api.decorators import async_response, websocket_command
 from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse, callback
 from homeassistant.helpers import discovery
 from homeassistant.helpers import entity_registry as er
@@ -192,7 +194,7 @@ def _apply_sun_monkey_patch(hass: HomeAssistant) -> None:
     All actual state writes funnel through _async_write_ha_state.
     """
     try:
-        from homeassistant.components.sun import Sun
+        from homeassistant.components.sun.entity import Sun
     except ImportError:
         _LOGGER.warning("[ha_test_harness] Could not import Sun; sun freeze not available")
         return
@@ -320,7 +322,7 @@ def _apply_sun_helper_patches(hass: HomeAssistant) -> None:
 
     # Also patch the imports in sun.condition module
     if hasattr(sun_condition, "is_up"):
-        sun_condition.is_up = _patched_is_up  # type: ignore[assignment]
+        sun_condition.is_up = _patched_is_up
     if hasattr(sun_condition, "get_astral_event_next"):
         sun_condition.get_astral_event_next = _patched_get_astral_event_next
 
@@ -375,9 +377,9 @@ def _apply_time_monkey_patch() -> None:
 
     time.time = _fake_time
     entity_helpers.timer = _fake_time
-    dt_util.utcnow = _fake_utcnow
+    dt_util.utcnow = _fake_utcnow  # type: ignore[assignment]
     dt_util.now = _fake_now
-    event_helpers.time_tracker_utcnow = _fake_utcnow
+    event_helpers.time_tracker_utcnow = _fake_utcnow  # type: ignore[assignment]
     event_helpers.time_tracker_timestamp = _fake_time
 
     _LOGGER.info("[ha_test_harness] Monkey-patched HA time functions for frozen time control")
@@ -507,7 +509,7 @@ def _create_virtual_entity(domain: str, unique_id: str, entity_id: str, state: s
     raise ValueError(f"Unsupported domain: {domain}")
 
 
-@websocket_api.websocket_command(
+@websocket_command(
     {
         vol.Required("type"): "ha_test_harness/entity/create",
         vol.Required("entity_id"): str,
@@ -515,8 +517,8 @@ def _create_virtual_entity(domain: str, unique_id: str, entity_id: str, state: s
         vol.Optional("attributes"): dict,
     }
 )
-@websocket_api.async_response
-async def ws_create_entity(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+@async_response
+async def ws_create_entity(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]) -> None:
     """Handle ha_test_harness/entity/create WebSocket command.
 
     Creates a new virtual entity, registers it with the appropriate HA platform, and
@@ -576,7 +578,7 @@ async def ws_create_entity(hass: HomeAssistant, connection: websocket_api.Active
     connection.send_result(msg["id"], {"entity_id": entity_id, "unique_id": unique_id})
 
 
-@websocket_api.websocket_command(
+@websocket_command(
     {
         vol.Required("type"): "ha_test_harness/entity/set_state",
         vol.Required("entity_id"): str,
@@ -584,8 +586,8 @@ async def ws_create_entity(hass: HomeAssistant, connection: websocket_api.Active
         vol.Optional("attributes"): dict,
     }
 )
-@websocket_api.async_response
-async def ws_set_entity_state(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+@async_response
+async def ws_set_entity_state(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]) -> None:
     """Handle ha_test_harness/entity/set_state WebSocket command.
 
     Updates the state (and optionally attributes) of an existing virtual entity.
@@ -605,14 +607,14 @@ async def ws_set_entity_state(hass: HomeAssistant, connection: websocket_api.Act
     connection.send_result(msg["id"], {"entity_id": entity_id, "state": state})
 
 
-@websocket_api.websocket_command(
+@websocket_command(
     {
         vol.Required("type"): "ha_test_harness/entity/delete",
         vol.Required("entity_id"): str,
     }
 )
-@websocket_api.async_response
-async def ws_delete_entity(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+@async_response
+async def ws_delete_entity(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]) -> None:
     """Handle ha_test_harness/entity/delete WebSocket command.
 
     Removes the entity from the HA state machine, entity platform, and entity registry.
@@ -640,14 +642,14 @@ async def ws_delete_entity(hass: HomeAssistant, connection: websocket_api.Active
     connection.send_result(msg["id"], {"entity_id": entity_id})
 
 
-@websocket_api.websocket_command(
+@websocket_command(
     {
         vol.Required("type"): "ha_test_harness/entity/freeze",
         vol.Required("entity_id"): str,
     }
 )
-@websocket_api.async_response
-async def ws_freeze_entity(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+@async_response
+async def ws_freeze_entity(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]) -> None:
     """Handle ha_test_harness/entity/freeze WebSocket command.
 
     Adds the entity to the frozen set, preventing self-updating behavior from
@@ -667,14 +669,14 @@ async def ws_freeze_entity(hass: HomeAssistant, connection: websocket_api.Active
     connection.send_result(msg["id"], {"entity_id": entity_id})
 
 
-@websocket_api.websocket_command(
+@websocket_command(
     {
         vol.Required("type"): "ha_test_harness/entity/unfreeze",
         vol.Required("entity_id"): str,
     }
 )
-@websocket_api.async_response
-async def ws_unfreeze_entity(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+@async_response
+async def ws_unfreeze_entity(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]) -> None:
     """Handle ha_test_harness/entity/unfreeze WebSocket command.
 
     Removes the entity from the frozen set, restoring normal self-updating behavior.
@@ -689,14 +691,14 @@ async def ws_unfreeze_entity(hass: HomeAssistant, connection: websocket_api.Acti
     connection.send_result(msg["id"], {"entity_id": entity_id})
 
 
-@websocket_api.websocket_command(
+@websocket_command(
     {
         vol.Required("type"): "ha_test_harness/time/set",
         vol.Required("timestamp"): str,
     }
 )
-@websocket_api.async_response
-async def ws_time_set(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+@async_response
+async def ws_time_set(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]) -> None:
     """Handle ha_test_harness/time/set WebSocket command.
 
     Sets the frozen time to an absolute ISO 8601 timestamp. Directly sets the frozen
@@ -728,14 +730,14 @@ async def ws_time_set(hass: HomeAssistant, connection: websocket_api.ActiveConne
     connection.send_result(msg["id"], {"timestamp": target_dt.isoformat(), "offset_seconds": 0.0})
 
 
-@websocket_api.websocket_command(
+@websocket_command(
     {
         vol.Required("type"): "ha_test_harness/time/advance",
         vol.Required("seconds"): vol.Coerce(float),
     }
 )
-@websocket_api.async_response
-async def ws_time_advance(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+@async_response
+async def ws_time_advance(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]) -> None:
     """Handle ha_test_harness/time/advance WebSocket command.
 
     Advances the frozen time by the specified number of seconds (relative offset).
@@ -762,13 +764,13 @@ async def ws_time_advance(hass: HomeAssistant, connection: websocket_api.ActiveC
     connection.send_result(msg["id"], {"timestamp": new_dt.isoformat(), "offset_seconds": 0.0})
 
 
-@websocket_api.websocket_command(
+@websocket_command(
     {
         vol.Required("type"): "ha_test_harness/time/get",
     }
 )
-@websocket_api.async_response
-async def ws_time_get(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+@async_response
+async def ws_time_get(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]) -> None:
     """Handle ha_test_harness/time/get WebSocket command.
 
     Returns the current frozen time as an ISO 8601 timestamp.
@@ -836,7 +838,7 @@ def _build_sun_attrs(
     return sun_attrs
 
 
-@websocket_api.websocket_command(
+@websocket_command(
     {
         vol.Required("type"): "ha_test_harness/sun/override",
         vol.Optional("state"): str,
@@ -845,8 +847,8 @@ def _build_sun_attrs(
         vol.Optional("attributes"): dict,
     }
 )
-@websocket_api.async_response
-async def ws_sun_override(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+@async_response
+async def ws_sun_override(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]) -> None:
     """Handle ha_test_harness/sun/override WebSocket command.
 
     Overrides sun conditions to return the specified values. Patches is_up(),
@@ -890,13 +892,13 @@ async def ws_sun_override(hass: HomeAssistant, connection: websocket_api.ActiveC
     connection.send_result(msg["id"], {"override": override, "state": sun_state})
 
 
-@websocket_api.websocket_command(
+@websocket_command(
     {
         vol.Required("type"): "ha_test_harness/sun/restore",
     }
 )
-@websocket_api.async_response
-async def ws_sun_restore(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+@async_response
+async def ws_sun_restore(hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]) -> None:
     """Handle ha_test_harness/sun/restore WebSocket command.
 
     Clears the sun override and unfreezes sun.sun, allowing it to recalculate
