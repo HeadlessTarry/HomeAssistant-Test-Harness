@@ -1,9 +1,9 @@
 """Virtual entity classes for the HA Test Harness integration."""
 
 # mypy: disable-error-code="override"
-# HA stubs define base class properties (is_on, extra_state_attributes, native_value, brightness)
+# HA's type hints define base class properties (is_on, extra_state_attributes, native_value, brightness)
 # with structural constraints that mypy flags as [override] errors even when return types match.
-# These classes are valid HA entities at runtime — the errors are false positives from the stubs.
+# These classes are valid HA entities at runtime — the errors are false positives from HA's type hints.
 
 from __future__ import annotations
 
@@ -13,8 +13,10 @@ from decimal import Decimal
 from typing import Any
 
 from homeassistant.components.binary_sensor import BinarySensorEntity
-from homeassistant.components.light import ColorMode, LightEntity, LightEntityFeature
-from homeassistant.components.media_player import MediaPlayerEntity, MediaPlayerEntityFeature
+from homeassistant.components.light import LightEntity
+from homeassistant.components.light.const import ColorMode, LightEntityFeature
+from homeassistant.components.media_player import MediaPlayerEntity
+from homeassistant.components.media_player.const import MediaPlayerEntityFeature
 from homeassistant.components.select import SelectEntity
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.entity import ToggleEntity
