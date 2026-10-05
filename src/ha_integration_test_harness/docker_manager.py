@@ -120,7 +120,7 @@ class DockerComposeManager:
                 f"configuration.yaml not found at {config_file}. "
                 "Tests must be run from a directory containing a 'home_assistant' subdirectory with your Home Assistant configuration, "
                 "or set HOME_ASSISTANT_CONFIG_ROOT environment variable to specify the location. "
-                "See: https://github.com/HeadlessTarry/HomeAssistant-Test-Harness/blob/main/documentation/usage.md"
+                "See: https://github.com/HeadlessTarry/HomeAssistant-Test-Harness/blob/main/docs/usage.md"
             )
 
         # Detect AppDaemon configuration root

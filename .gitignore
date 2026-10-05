@@ -34,6 +34,7 @@ shared_data/
 .env
 .env.backup
 .worktrees/
+.verify/
 
 # Package build artifacts
 *.egg

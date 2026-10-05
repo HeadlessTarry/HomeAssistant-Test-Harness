@@ -14,7 +14,7 @@ See [Installation Guide](installation.md) for details.
 
 When you run tests, the harness:
 
-1. **Checks environment variables**: Looks for `HA_CONFIG_ROOT` (Home Assistant) and `APPDAEMON_CONFIG_ROOT` (AppDaemon)
+1. **Checks environment variables**: Looks for `HOME_ASSISTANT_CONFIG_ROOT` (Home Assistant) and `APPDAEMON_CONFIG_ROOT` (AppDaemon)
 2. **Falls back to subdirectories**: If environment variables are not set, looks for `home_assistant/` and `appdaemon/` subdirectories in the current working directory
 3. **Validates configuration**:
    - Checks that `configuration.yaml` exists in the Home Assistant root (raises error if missing)
@@ -39,7 +39,7 @@ my-project/
 **Option 2 - Set environment variables explicitly**:
 
 ```bash
-export HA_CONFIG_ROOT=/path/to/homeassistant/config
+export HOME_ASSISTANT_CONFIG_ROOT=/path/to/homeassistant/config
 export APPDAEMON_CONFIG_ROOT=/path/to/appdaemon/config
 pytest
 ```
