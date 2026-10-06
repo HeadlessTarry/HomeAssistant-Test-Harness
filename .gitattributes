@@ -18,4 +18,4 @@
 
 # Git configuration files
 .gitignore text
-.gitattributes text
+.gitattributes text eol=lf
