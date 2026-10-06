@@ -50,12 +50,11 @@ your configuration works correctly in an environment that mirrors production.
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please see our [Contributing Guide](CONTRIBUTING.md) for details on:
+Contributions are welcome! Please see our [Development Guide](docs/development.md) for details on:
 
 - Setting up the development environment
 - Code standards and style guide
 - Running tests and validation
-- Submitting pull requests
 
 Please read our [Code of Conduct](CODE_OF_CONDUCT.md) before contributing.
 

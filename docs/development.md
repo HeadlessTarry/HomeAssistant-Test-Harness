@@ -14,7 +14,7 @@
 ```bash
 git clone https://github.com/HeadlessTarry/HomeAssistant-Test-Harness.git
 cd HomeAssistant-Test-Harness
-./setup_dev_env.sh
+./setup_dev_env.sh --skip-checks
 ```
 
 This script:
@@ -22,12 +22,11 @@ This script:
 1. Installs all development dependencies using `uv`
 2. Sets up pre-commit hooks
 3. Creates a `.env` file for local environment variables
-4. Runs initial validation (pre-commit checks, build, tests)
 
-**Skip initial validation:** If you want to skip the initial checks, use:
+**Run initial validation:** To also run the initial validation (pre-commit checks, build, tests), omit the flag:
 
 ```bash
-./setup_dev_env.sh --skip-checks
+./setup_dev_env.sh
 ```
 
 ## Running Checks
