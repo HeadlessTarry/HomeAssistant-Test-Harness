@@ -4,17 +4,17 @@
 # Shell scripts MUST have LF endings for Docker container execution
 *.sh text eol=lf
 
-# Python source files use native line endings
-*.py text
+# Python source files use LF to match CI runners and avoid CRLF edit mismatches on Windows
+*.py text eol=lf
 
 # Configuration files
 *.yaml text eol=lf
 *.yml text eol=lf
-*.toml text
-*.json text
+*.toml text eol=lf
+*.json text eol=lf
 
 # Documentation
-*.md text
+*.md text eol=lf
 
 # Git configuration files
 .gitignore text

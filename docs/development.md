@@ -49,26 +49,11 @@ This script:
 
 ### Individual Tools
 
-You can also run individual checks:
+Run a single pre-commit hook exactly as CI does, using any hook `id` from
+[`.pre-commit-config.yaml`](../.pre-commit-config.yaml) (e.g. `mypy`, `black`, `isort`):
 
 ```bash
-# Format code
-black src/
-
-# Sort imports
-isort src/
-
-# Lint
-flake8 src/
-
-# Type check
-mypy src/
-
-# Lint YAML
-yamllint .
-
-# Lint Markdown
-markdownlint_docker --style .markdownlint_style.rb .
+uv run pre-commit run <hook-id> --all-files
 ```
 
 ## Testing the Package
