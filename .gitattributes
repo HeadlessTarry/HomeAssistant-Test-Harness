@@ -17,5 +17,5 @@
 *.md text eol=lf
 
 # Git configuration files
-.gitignore text
+.gitignore text eol=lf
 .gitattributes text eol=lf
