@@ -9,7 +9,7 @@ configurations using real Docker containers — no mocks.
 
 ## 🚪 Gate
 
-**Before making changes:** Create a worktree, then run `./setup_dev_env.sh`.
+**Before making changes:** Create a worktree, then run `./setup_dev_env.sh --skip-checks`.
 See **[docs/development.md](docs/development.md)** — When setting up the development environment:
 worktrees, prerequisites, VS Code, interactive environment.
 
@@ -34,6 +34,7 @@ These are not optional. Skipping them will cause CI failures.
 - **[docs/time-machine-fixture.md](docs/time-machine-fixture.md)** — When testing time-based automations: forward-only constraint, DST handling, session-scoped persistence, sunrise/sunset presets
 - **[docs/troubleshooting.md](docs/troubleshooting.md)** — When encountering issues: common errors, debugging tips
 - **[docs/development.md](docs/development.md)** — When contributing to the harness: development environment, running checks, code style, releases
+- **[CODING_STANDARDS.md](CODING_STANDARDS.md)** — When writing or reviewing changes: judgement-call rules for docs, config and permissions
 - **[docs/adr/](docs/adr/)** — When understanding why a design decision was made: architecture decision records
 
 ## 🤖 Agent skills
