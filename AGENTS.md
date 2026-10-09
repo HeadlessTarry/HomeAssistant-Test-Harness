@@ -38,6 +38,4 @@ These are not optional. Skipping them will cause CI failures.
 
 ## 🤖 Agent skills
 
-- **[docs/agents/issue-tracker.md](docs/agents/issue-tracker.md)** — When filing or triaging issues: GitHub Issues workflow
-- **[docs/agents/triage-labels.md](docs/agents/triage-labels.md)** — When applying triage labels: canonical label vocabulary
 - **[docs/agents/domain.md](docs/agents/domain.md)** — When navigating domain docs: GLOSSARY.md layout, ADR conventions
