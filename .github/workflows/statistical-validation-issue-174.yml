@@ -69,7 +69,7 @@ jobs:
     if: always()
     steps:
       - name: ⤵️ Download all logs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: "run-*-log"
           path: results/
