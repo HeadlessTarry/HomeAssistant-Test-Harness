@@ -6,36 +6,26 @@ Integration tests use a Docker Compose environment to run an isolated instance o
 
 ## Container Architecture
 
-```plaintext
-┌─────────────────────────────────────────────────────────────┐
-│  Test Suite (pytest)                                        │
-│  ├── Uses harness package (DockerComposeManager,            │
-│  │   HomeAssistant, TimeMachine)                            │
-│  └── Interacts via HTTP/WebSocket APIs                      │
-└─────────────────────────────────────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Docker Compose Environment                                 │
-│  ┌────────────────────────┐                                 │
-│  │  Home Assistant        │                                 │
-│  │  Port: 8123 (ephemeral)│                                 │
-│  │  ├── Configuration     │                                 │
-│  │  │   (from repo)       │                                 │
-│  │  │   ├── Automations   │                                 │
-│  │  │   ├── Scripts       │                                 │
-│  │  │   └── Templates     │                                 │
-│  │  └── ha_test_harness   │                                 │
-│  │      (custom component)│                                 │
-│  └────────────────────────┘                                 │
-│             │                                               │
-│             ▼                                               │
-│   ┌──────────────────┐                                      │
-│   │  Shared Volume   │                                      │
-│   │  - Auth token    │                                      │
-│   │  - Ready flag    │                                      │
-│   └──────────────────┘                                      │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph suite["Test Suite (pytest)"]
+        harness["Harness package<br/>DockerComposeManager, HomeAssistant, TimeMachine"]
+    end
+
+    subgraph compose["Docker Compose Environment"]
+        subgraph ha["Home Assistant<br/>Port: 8123 (ephemeral)"]
+            subgraph config["Configuration (from repo)"]
+                automations["Automations"]
+                scripts["Scripts"]
+                templates["Templates"]
+            end
+            component["ha_test_harness<br/>(custom component)"]
+        end
+        volume[("Shared Volume<br/>- Auth token<br/>- Ready flag")]
+    end
+
+    harness -- "HTTP/WebSocket APIs" --> ha
+    ha --> volume
 ```
 
 The `ha_test_harness` custom component is deployed into the Home Assistant instance to enable
