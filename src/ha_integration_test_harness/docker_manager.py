@@ -81,7 +81,6 @@ class DockerComposeManager:
 
     The environment includes:
     - Home Assistant on localhost:<dynamic-port>
-    - AppDaemon on localhost:<dynamic-port>
 
     Docker assigns ephemeral ports automatically to enable parallel test runs.
     """
@@ -121,19 +120,6 @@ class DockerComposeManager:
                 "Tests must be run from a directory containing a 'home_assistant' subdirectory with your Home Assistant configuration, "
                 "or set HOME_ASSISTANT_CONFIG_ROOT environment variable to specify the location. "
                 "See: https://github.com/HeadlessTarry/HomeAssistant-Test-Harness/blob/main/docs/usage.md"
-            )
-
-        # Detect AppDaemon configuration root
-        self._appdaemon_config_root = self._detect_appdaemon_config_root()
-
-        # Validate that apps.yaml exists in the AppDaemon root (warning only)
-        apps_yaml = self._appdaemon_config_root / "apps" / "apps.yaml"
-        if not apps_yaml.exists():
-            logger.warning(
-                f"apps/apps.yaml not found at {apps_yaml}. "
-                "AppDaemon may not function correctly. "
-                "Ensure you have an 'appdaemon' subdirectory with your AppDaemon configuration, "
-                "or set APPDAEMON_CONFIG_ROOT environment variable to specify the location."
             )
 
         # Set up containers directory path
@@ -620,35 +606,12 @@ class DockerComposeManager:
         logger.debug(f"HOME_ASSISTANT_CONFIG_ROOT not set, using default 'home_assistant' subdirectory as Home Assistant root: {ha_root}")
         return ha_root
 
-    def _detect_appdaemon_config_root(self) -> Path:
-        """Detect the AppDaemon configuration root directory.
-
-        Checks the APPDAEMON_CONFIG_ROOT environment variable first.
-        If not set, falls back to the 'appdaemon' subdirectory in the
-        current working directory.
-
-        Returns:
-            Path: The detected AppDaemon configuration root directory.
-        """
-        env_var = os.environ.get("APPDAEMON_CONFIG_ROOT")
-        if env_var:
-            appdaemon_root = Path(env_var)
-            logger.debug(f"Using AppDaemon root from APPDAEMON_CONFIG_ROOT: {appdaemon_root}")
-            return appdaemon_root
-
-        appdaemon_root = Path(os.getcwd()) / "appdaemon"
-        logger.debug(f"APPDAEMON_CONFIG_ROOT not set, using default 'appdaemon' subdirectory as AppDaemon root: {appdaemon_root}")
-        return appdaemon_root
-
     def start(self) -> None:
         """Start the Docker Compose test environment.
 
         Executes 'docker compose up -d --wait' which:
         - Starts Home Assistant on localhost:8123
         - Waits for Home Assistant to be healthy (via healthcheck)
-        - Generates authentication token and AppDaemon config
-        - Starts AppDaemon on localhost:5050
-        - Waits for AppDaemon to be healthy (via healthcheck)
 
         Always stages the Home Assistant config directory to inject the bundled
         ha_test_harness custom integration, and also applies the persistent entities
@@ -665,10 +628,9 @@ class DockerComposeManager:
             # (and persistent entities overlay if configured).
             config_root = self._stage_ha_config_with_entities()
 
-            # Set environment variables for docker-compose to mount the configuration directories
+            # Set environment variables for docker-compose to mount the configuration directory
             env = os.environ.copy()
             env["HA_CONFIG_ROOT"] = str(config_root)
-            env["APPDAEMON_CONFIG_ROOT"] = str(self._appdaemon_config_root)
             if self._ha_image:
                 env["HA_IMAGE"] = self._ha_image
 
@@ -1054,25 +1016,11 @@ class DockerComposeManager:
             raise DockerError("Home Assistant container not found")
         return container.url
 
-    def get_appdaemon_url(self) -> str:
-        """Get the AppDaemon URL with dynamically assigned port.
-
-        Returns:
-            The full URL to AppDaemon (e.g., "http://localhost:49154").
-
-        Raises:
-            DockerError: If the port mapping cannot be determined.
-        """
-        container = self._get_container("appdaemon")
-        if not container:
-            raise DockerError("AppDaemon container not found")
-        return container.url
-
     def read_container_file(self, service: str, file_path: str) -> str:
         """Read a file from a running container.
 
         Args:
-            service: The service name (e.g., "homeassistant", "appdaemon").
+            service: The service name (e.g., "homeassistant").
             file_path: The absolute path to the file inside the container.
 
         Returns:
@@ -1119,7 +1067,7 @@ class DockerComposeManager:
         call during teardown or in error states.
 
         Args:
-            service: The service name (e.g., "homeassistant", "appdaemon").
+            service: The service name (e.g., "homeassistant").
             file_path: The absolute path to the file inside the container.
             content: The content to write to the file.
 
@@ -1189,7 +1137,7 @@ class DockerComposeManager:
                 ports = details.get("Ports", "")
                 if ports:
                     # Match pattern: <host>:<host_port>-><container_port>/<protocol>
-                    # E.g. '0.0.0.0:64865->5050/tcp, [::]:64865->5050/tcp'
+                    # E.g. '0.0.0.0:64865->8123/tcp, [::]:64865->8123/tcp'
                     match = re.search(r":(\d+)->(\d+)/", ports)
                     if match:
                         mapped_port = int(match.group(1))
@@ -1228,7 +1176,7 @@ class DockerComposeManager:
         """Get the DockerContainer object for a given service.
 
         Args:
-            service: The service name (e.g., "homeassistant", "appdaemon").
+            service: The service name (e.g., "homeassistant").
 
         Returns:
             DockerContainer: The corresponding DockerContainer object or None if not found.

@@ -3,6 +3,52 @@ set -e
 
 echo "⏳ Initializing Home Assistant..."
 
+# Every startup wait below shares this budget. Keep it below the compose healthcheck's budget
+# (start_period + retries * interval in docker-compose.yaml), or the container is marked
+# unhealthy before this script can report why it timed out.
+STARTUP_TIMEOUT=120
+STARTUP_DEADLINE=$((SECONDS + STARTUP_TIMEOUT))
+
+print_diagnostics() {
+  echo "📋 Container diagnostics:"
+  if pgrep hass >/dev/null 2>&1; then
+    echo "   HA process: running (PID: $(pgrep hass))"
+  else
+    echo "   HA process: not running"
+  fi
+  if [[ -f /config/home-assistant.log ]]; then
+    echo "   Last 20 lines of HA log:"
+    tail -n 20 /config/home-assistant.log
+  fi
+}
+
+# Poll a command once a second until it succeeds, or exit once the shared startup deadline passes.
+# Usage: wait_until <description> <command> [args...]
+wait_until() {
+  local description="$1"
+  shift
+  echo "⏳ Waiting for ${description}..."
+  while (( SECONDS < STARTUP_DEADLINE )); do
+    if "$@"; then
+      echo "✅ Done waiting for ${description}"
+      return 0
+    fi
+    sleep 1
+  done
+  echo "❌ Timed out waiting for ${description} (startup budget: ${STARTUP_TIMEOUT}s)"
+  print_diagnostics
+  exit 1
+}
+
+ha_api_responding() {
+  curl -s --max-time 2 http://localhost:8123/api/ > /dev/null 2>&1
+}
+
+# The API answers before startup completes; RUNNING means all integrations, including automations, are set up.
+ha_running() {
+  curl -s --max-time 2 http://localhost:8123/api/config -H "Authorization: Bearer ${ACCESS_TOKEN}" | grep -q '"state": *"RUNNING"'
+}
+
 # Ensure essential config files, which are not version controlled, exist
 touch /config/automations.yaml
 
@@ -16,33 +62,7 @@ echo "🚀 Starting Home Assistant..."
 python /hass_wrapper.py --config /config &
 HA_PID=$!
 
-# Wait for Home Assistant to be ready
-echo "⏳ Waiting for Home Assistant to start..."
-max_attempts=60
-attempt=0
-while [ $attempt -lt $max_attempts ]; do
-  if curl -s http://localhost:8123/api/ > /dev/null 2>&1; then
-    echo "✅ Home Assistant is ready"
-    break
-  fi
-  attempt=$((attempt + 1))
-  sleep 1
-done
-
-if [ $attempt -eq $max_attempts ]; then
-  echo "❌ Home Assistant failed to start within 60 seconds"
-  echo "📋 Container diagnostics:"
-  if pgrep hass >/dev/null 2>&1; then
-    echo "   HA process: running (PID: $(pgrep hass))"
-  else
-    echo "   HA process: not running"
-  fi
-  if [ -f /config/home-assistant.log ]; then
-    echo "   Last 20 lines of HA log:"
-    tail -n 20 /config/home-assistant.log
-  fi
-  exit 1
-fi
+wait_until "the Home Assistant API to respond" ha_api_responding
 
 # Create a test user via the onboarding API
 echo "👤 Creating test user..."
@@ -124,6 +144,8 @@ if [[ "$INTEGRATION_STATUS" != 2* ]]; then
   exit 1
 fi
 echo "✅ Onboarding steps completed"
+
+wait_until "Home Assistant startup to complete (RUNNING state)" ha_running
 
 # Create readiness marker to signal initialization is complete
 touch /shared_data/.homeassistant_ready

@@ -1,6 +1,6 @@
 # Home Assistant Integration Test Harness
 
-A pytest plugin for integration testing Home Assistant and AppDaemon configurations using Docker containers.
+A pytest plugin for integration testing Home Assistant configurations using Docker containers.
 
 [![Continuous Integration][ci-badge]][ci-url]
 [![Quality Gate Status][quality-badge]][quality-url]
@@ -21,7 +21,7 @@ A pytest plugin for integration testing Home Assistant and AppDaemon configurati
 
 ## ℹ️ About
 
-A pytest plugin (`ha_integration_test_harness`) for integration testing Home Assistant and AppDaemon
+A pytest plugin (`ha_integration_test_harness`) for integration testing Home Assistant
 configurations using real Docker containers — no mocks. Tests run against real instances, ensuring
 your configuration works correctly in an environment that mirrors production.
 
@@ -34,9 +34,8 @@ your configuration works correctly in an environment that mirrors production.
 - **[docs/writing-tests.md](docs/writing-tests.md)** — When writing tests: basic patterns, time-based tests, calling actions, polling
 - **[docs/persistent-entities.md](docs/persistent-entities.md)** — When you need entities available across multiple tests: YAML configuration, startup behavior, comparison with per-test entities
 - **[docs/best-practices.md](docs/best-practices.md)** — When optimizing test patterns: cleanup strategies, factory fixtures, area/label testing
-- **[docs/fixtures.md](docs/fixtures.md)** — When understanding available fixtures: docker, home_assistant, app_daemon, time_machine
+- **[docs/fixtures.md](docs/fixtures.md)** — When understanding available fixtures: docker, home_assistant, time_machine
 - **[docs/home-assistant-fixture.md](docs/home-assistant-fixture.md)** — When interacting with Home Assistant: entity management, state assertions, action calls, area/label assignment
-- **[docs/app-daemon-fixture.md](docs/app-daemon-fixture.md)** — When working with AppDaemon: basic API access
 - **[docs/time-machine-fixture.md](docs/time-machine-fixture.md)** — When testing time-based automations: forward-only constraint, DST handling, session-scoped persistence, sunrise/sunset presets
 - **[docs/troubleshooting.md](docs/troubleshooting.md)** — When encountering issues: common errors, debugging tips
 - **[docs/development.md](docs/development.md)** — When contributing to the harness: development environment, running checks, code style, releases

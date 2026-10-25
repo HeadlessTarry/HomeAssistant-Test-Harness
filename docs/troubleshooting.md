@@ -53,7 +53,7 @@ Failed to start docker-compose environment (project: abc123)
 **Solution:**
 
 1. Check Docker container logs in test output
-2. Verify port 8123 and 5050 are available (or dynamic ports work)
+2. Verify port 8123 is available (or dynamic ports work)
 3. Check Home Assistant configuration is valid
 4. Try running containers manually: `cd src/ha_integration_test_harness/containers && docker compose up`
 
@@ -61,7 +61,7 @@ Failed to start docker-compose environment (project: abc123)
 
 **Symptoms:** Containers fail to start, port binding errors in logs.
 
-**Cause:** Ports 8123 or 5050 are already in use (if not using dynamic ports).
+**Cause:** Port 8123 is already in use (if not using dynamic ports).
 
 **Solution:**
 
@@ -270,10 +270,9 @@ Containers are automatically stopped after tests, but logs are captured. Check t
 Navigate to the containers directory and run manually:
 
 ```bash
-# Set these to your actual configuration directories
-# For default structure, use: $(pwd)/home_assistant and $(pwd)/appdaemon
+# Set this to your actual configuration directory
+# For default structure, use: $(pwd)/home_assistant
 export HA_CONFIG_ROOT=/path/to/homeassistant/config
-export APPDAEMON_CONFIG_ROOT=/path/to/appdaemon/config
 cd src/ha_integration_test_harness/containers
 docker compose up
 ```

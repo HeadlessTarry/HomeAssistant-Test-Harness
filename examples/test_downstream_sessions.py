@@ -1,6 +1,6 @@
 """End-to-end tests of session-level behaviour, run as separate downstream pytest sessions via pytester.
 
-Each test builds a scratch downstream project (pytest.ini, home_assistant/, appdaemon/apps/) and runs pytest
+Each test builds a scratch downstream project (pytest.ini, home_assistant/) and runs pytest
 in a subprocess against it. This covers what a single examples session cannot: config auto-discovery from the
 working directory, pytest ini options, startup failures, and container teardown.
 """
@@ -12,28 +12,29 @@ from pathlib import Path
 
 import pytest
 
-CONFIG_ROOT_ENV_VARS = ("HOME_ASSISTANT_CONFIG_ROOT", "APPDAEMON_CONFIG_ROOT", "HA_IMAGE")
+CONFIG_ROOT_ENV_VARS = ("HOME_ASSISTANT_CONFIG_ROOT", "HA_IMAGE")
+TEMP_ENV_VARS = ("TMPDIR", "TEMP", "TMP")
 
 
-def _containers_mounting(apps_dir: Path) -> set[str]:
-    """Names of harness AppDaemon containers whose /conf/apps mount is ``apps_dir``."""
-    ids = subprocess.run(["docker", "ps", "-aq", "--filter", "label=com.docker.compose.service=appdaemon"], capture_output=True, text=True).stdout.split()
+def _containers_mounting(temp_dir: Path) -> set[str]:
+    """Names of harness Home Assistant containers whose staged /config mount lives under ``temp_dir``."""
+    ids = subprocess.run(["docker", "ps", "-aq", "--filter", "label=com.docker.compose.service=homeassistant"], capture_output=True, text=True).stdout.split()
     if not ids:
         return set()
     inspected = json.loads(subprocess.run(["docker", "inspect", *ids], capture_output=True, text=True).stdout or "[]")
-    target = str(apps_dir).replace("\\", "/").lower()
-    return {c["Name"] for c in inspected for m in c["Mounts"] if m["Destination"] == "/conf/apps" and m["Source"].replace("\\", "/").lower() == target}
+    target = str(temp_dir).replace("\\", "/").lower() + "/"
+    return {c["Name"] for c in inspected for m in c["Mounts"] if m["Destination"] == "/config" and m["Source"].replace("\\", "/").lower().startswith(target)}
 
 
 def _run_downstream_session(pytester: pytest.Pytester) -> tuple[pytest.RunResult, set[str]]:
     """Run pytest in the scratch project, returning the result and every container it was seen to start."""
-    apps_dir = pytester.path / "appdaemon" / "apps"
+    temp_dir = pytester.path / "tmp"
     seen: set[str] = set()
     done = threading.Event()
 
     def watch() -> None:
         while not done.wait(2):
-            seen.update(_containers_mounting(apps_dir))
+            seen.update(_containers_mounting(temp_dir))
 
     watcher = threading.Thread(target=watch, daemon=True)
     watcher.start()
@@ -47,11 +48,17 @@ def _run_downstream_session(pytester: pytest.Pytester) -> tuple[pytest.RunResult
 
 @pytest.fixture
 def downstream(pytester: pytest.Pytester, monkeypatch: pytest.MonkeyPatch) -> pytest.Pytester:
-    """A scratch downstream project with no config-root env vars, so the harness must auto-discover it."""
+    """A scratch downstream project with no config-root env vars, so the harness must auto-discover it.
+
+    Its temp dir is redirected into the project, so the staged HA config each session mounts identifies
+    that session's containers.
+    """
     for var in CONFIG_ROOT_ENV_VARS:
         monkeypatch.delenv(var, raising=False)
-    (pytester.path / "appdaemon" / "apps").mkdir(parents=True)
-    (pytester.path / "appdaemon" / "apps" / "apps.yaml").write_text("# No apps\n")
+    temp_dir = pytester.path / "tmp"
+    temp_dir.mkdir()
+    for var in TEMP_ENV_VARS:
+        monkeypatch.setenv(var, str(temp_dir))
     return pytester
 
 
@@ -86,8 +93,8 @@ def test_downstream_session_discovers_config_honours_exclusions_and_tears_down(d
     result, seen = _run_downstream_session(downstream)
 
     result.assert_outcomes(passed=1, failed=1)
-    assert len(seen) == 1, f"expected one AppDaemon container for this session, saw {seen}"
-    assert _containers_mounting(downstream.path / "appdaemon" / "apps") == set(), "containers were not torn down"
+    assert len(seen) == 1, f"expected one Home Assistant container for this session, saw {seen}"
+    assert _containers_mounting(downstream.path / "tmp") == set(), "containers were not torn down"
 
 
 def test_session_without_harness_fixtures_starts_no_containers(downstream: pytest.Pytester) -> None:
@@ -143,4 +150,4 @@ def test_ha_image_env_var_overrides_ini_and_reaches_docker(downstream: pytest.Py
     result.assert_outcomes(errors=1)
     result.stdout.fnmatch_lines([f"*unable to get image '{env_image}'*must be lowercase*"])
     assert ini_image not in result.stdout.str()
-    assert _containers_mounting(downstream.path / "appdaemon" / "apps") == set()
+    assert _containers_mounting(downstream.path / "tmp") == set()

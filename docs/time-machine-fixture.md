@@ -245,14 +245,9 @@ session startup and uses it for all `jump_to_next` local-time conversions. You c
 timezone during a test session — it is determined by the Home Assistant configuration and is fixed
 for the lifetime of the session.
 
-### Shared Clock Across Containers
-
-Both Home Assistant and AppDaemon share the same fake clock. You cannot set different times for
-each container.
-
 ### State Persistence Across Tests
 
-The `docker`, `home_assistant`, and `app_daemon` fixtures are session-scoped, so entity states persist across tests. The `time_machine` fixture is also session-scoped,
+The `docker` and `home_assistant` fixtures are session-scoped, so entity states persist across tests. The `time_machine` fixture is also session-scoped,
 so time persists and cannot be reset.
 
 **Best practice:** Always explicitly set initial time at the start of tests that use time manipulation. Reset relevant entity states if needed:

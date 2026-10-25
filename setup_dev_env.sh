@@ -27,7 +27,6 @@ else
     ROOT_PATH="$(pwd)"
 fi
 echo "HOME_ASSISTANT_CONFIG_ROOT=\"$ROOT_PATH/examples/home_assistant\"" > .env
-echo "APPDAEMON_CONFIG_ROOT=\"$ROOT_PATH/examples/appdaemon\"" >> .env
 
 echo ""
 echo "🔍 Let's just check everything is working..."

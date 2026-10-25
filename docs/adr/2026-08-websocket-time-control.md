@@ -2,7 +2,8 @@
 
 > **Status:** Active
 > **Issue:** [#174 — HA container becomes unresponsive after time jumps via libfaketime](https://github.com/HeadlessTarry/HomeAssistant-Test-Harness/issues/174)
-> **Amended by:** [#178 — clock coherence under WebSocket time control](https://github.com/HeadlessTarry/HomeAssistant-Test-Harness/issues/178)
+> **Amended by:** [#178 — clock coherence under WebSocket time control](https://github.com/HeadlessTarry/HomeAssistant-Test-Harness/issues/178),
+> [2026-10-drop-appdaemon](2026-10-drop-appdaemon.md)
 > **Date:** 2026-08
 > **Supersedes:** [2026-08-defensive-stabilization-after-time-jumps](2026-08-defensive-stabilization-after-time-jumps.md)
 
@@ -182,11 +183,11 @@ deterministic test execution.
   - Requires patching HA internal functions (brittle to HA version changes)
   - `loop._scheduled` and `TimerHandle._when` are CPython implementation details (may change)
   - `time.time()` is patched process-wide, so any library in the HA process sees fake wall-clock time
-  - Time offset is per-process (AppDaemon still uses real time)
+  - Time offset is per-process (AppDaemon still uses real time) — obsolete: AppDaemon removed by [2026-10-drop-appdaemon](2026-10-drop-appdaemon.md)
   - Moving the clock backwards leaves HA's recurring time listeners armed in the future
 
 - **Neutral:**
-  - AppDaemon time control is not addressed (AppDaemon doesn't expose time APIs)
+  - AppDaemon time control is not addressed (AppDaemon doesn't expose time APIs) — obsolete: AppDaemon removed by [2026-10-drop-appdaemon](2026-10-drop-appdaemon.md)
   - Runtime attribute guard required for `loop._scheduled` access
   - Timers belonging to aiohttp, asyncio and other non-HA libraries stay on the real
     clock, which is also the clock they measure against

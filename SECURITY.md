@@ -68,7 +68,7 @@ When using Home Assistant Test Harness:
 
 ### Docker Container Security
 
-This tool runs Docker containers with Home Assistant and AppDaemon. Consider:
+This tool runs Docker containers with Home Assistant. Consider:
 
 - Containers run with default Docker security settings
 - Test credentials are ephemeral and generated per-session
@@ -93,7 +93,7 @@ Security issues within scope:
 
 Out of scope:
 
-- Vulnerabilities in Home Assistant or AppDaemon themselves (report to their respective projects)
+- Vulnerabilities in Home Assistant itself (report to the Home Assistant project)
 - Vulnerabilities in Docker Engine
 - Issues in user's test configurations
 - General Docker security hardening recommendations
