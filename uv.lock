@@ -1249,14 +1249,14 @@ wheels = [
 
 [[package]]
 name = "homeassistant-stubs"
-version = "2026.9.4"
+version = "2026.10.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "homeassistant" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2e/ae/b39bcdfa43602f276395ab41ab6ed71dda48d5eee475f026da6217dbdf81/homeassistant_stubs-2026.9.4.tar.gz", hash = "sha256:5f4b6c054d72836b6f1fc1ea1aa6597d557ba639d5fe861adbf99a809941c405", size = 1472918, upload-time = "2026-09-27T17:03:01.319Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ca/9c/c77fc543d32be781d79f961a8397c96301510060aa390fa5957c0f3ede3d/homeassistant_stubs-2026.10.0.tar.gz", hash = "sha256:a0451e9c6bb213fe00d79f85fdf3e7a1d8e81073dc285fa85b57fd2a2e71bd7c", size = 3939, upload-time = "2026-10-03T12:24:17.808Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/10/b0/13be519e2308a4525ec1f7cef3850c61f0acf39a5484930d0483f06c6e09/homeassistant_stubs-2026.9.4-py3-none-any.whl", hash = "sha256:ae468f9af80c7c8f7424518833a3806f1f8e3cf7f88bf46ed67d97afe0724374", size = 4183194, upload-time = "2026-09-27T17:02:58.603Z" },
+    { url = "https://files.pythonhosted.org/packages/46/c9/8683c0b234c7b05e36c81652d6774949b8a61edbc6090b5d27b75438f334/homeassistant_stubs-2026.10.0-py3-none-any.whl", hash = "sha256:bb284111bbbdd21fba6b20689378ced6943ebe300fa44d315c8e9efa2cc9f1b4", size = 2624, upload-time = "2026-10-03T12:24:16.551Z" },
 ]
 
 [[package]]
