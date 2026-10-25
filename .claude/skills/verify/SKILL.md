@@ -1,13 +1,13 @@
 ---
 name: verify
 description: >-
-  Experiment with the ha_integration_test_harness plugin from a throwaway downstream project against real HA and AppDaemon containers,
+  Experiment with the ha_integration_test_harness plugin from a throwaway downstream project against a real HA container,
   without editing the repo's tests. Use to try a change, reproduce a bug, or see what a downstream user sees before writing a test in examples/.
 ---
 
 # Verify the harness by experiment
 
-The harness is a pytest plugin. Its user runs `pytest` in a repo that has `home_assistant/configuration.yaml` and `appdaemon/apps/`. To experiment, make a
+The harness is a pytest plugin. Its user runs `pytest` in a repo that has `home_assistant/configuration.yaml`. To experiment, make a
 throwaway repo like that and run `pytest` in it. Lasting checks belong in `examples/`. `examples/test_downstream_sessions.py` shows the same approach as
 permanent `pytester` tests.
 
@@ -30,8 +30,8 @@ Create a scratch project under `.verify/` (gitignored):
 .verify/<name>/
 ├── pytest.ini                        # [pytest] plus any plugin options (ha_image, ha_exclude_files, ha_persistent_entities_path)
 ├── home_assistant/configuration.yaml # default_config: plus the automations or helpers under test
-├── appdaemon/apps/apps.yaml          # can be just a comment
-└── test_experiment.py                # uses home_assistant, time_machine, app_daemon, docker fixtures
+├── tmp/                              # empty; the plugin stages HA config here (see Cleanup)
+└── test_experiment.py                # uses home_assistant, time_machine, docker fixtures
 ```
 
 `pytest.ini` is required. Without it, pytest walks up to the repo's `pyproject.toml` and uses its settings.
@@ -39,12 +39,12 @@ Create a scratch project under `.verify/` (gitignored):
 Run it from inside the scratch project:
 
 ```bash
-cd .verify/<name> && env -u HOME_ASSISTANT_CONFIG_ROOT -u APPDAEMON_CONFIG_ROOT uv run pytest -p no:cacheprovider --log-cli-level=INFO
+cd .verify/<name> && env -u HOME_ASSISTANT_CONFIG_ROOT TMPDIR="$PWD/tmp" uv run pytest -p no:cacheprovider --log-cli-level=INFO
 ```
 
-- The `env -u` removes the config-root variables. If they are set (for example from the repo's `.env`), the plugin uses `examples/` instead of your scratch
+- The `env -u` removes the config-root variable. If it is set (for example from the repo's `.env`), the plugin uses `examples/` instead of your scratch
   config.
-- A run takes about 30 s when images are cached. The log line `Docker containers started successfully` means HA and AppDaemon are up. At session end the
+- A run takes about 30 s when images are cached. The log line `Docker containers started successfully` means HA is up. At session end the
   plugin removes its containers, even when tests fail.
 - To try a specific HA version, set `HA_IMAGE=homeassistant/home-assistant:<tag>` or add `ha_image = ...` to `pytest.ini`.
 
@@ -62,11 +62,11 @@ patterns from `examples/`.
 Delete `.verify/<name>/` when you are done. Each harness session cleans up its own containers. Other sessions on the same machine also run harness
 containers, so never remove containers by name pattern.
 
-If a run was interrupted (Ctrl-C, killed shell), its containers keep running. Find them by their AppDaemon apps mount, which points at your scratch project:
+If a run was interrupted (Ctrl-C, killed shell), its containers keep running. Find them by their HA `/config` mount, which `TMPDIR` put under your scratch project:
 
 ```bash
-docker inspect $(docker ps -aq --filter label=com.docker.compose.service=appdaemon) \
-  --format '{{index .Config.Labels "com.docker.compose.project"}} {{range .Mounts}}{{if eq .Destination "/conf/apps"}}{{.Source}}{{end}}{{end}}'
+docker inspect $(docker ps -aq --filter label=com.docker.compose.service=homeassistant) \
+  --format '{{index .Config.Labels "com.docker.compose.project"}} {{range .Mounts}}{{if eq .Destination "/config"}}{{.Source}}{{end}}{{end}}'
 docker compose -p <project-id-whose-mount-is-your-.verify-dir> down -v
 ```
 

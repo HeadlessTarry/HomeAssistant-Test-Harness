@@ -56,18 +56,6 @@ class HomeAssistantTimeoutError(HomeAssistantClientError):
     pass
 
 
-class AppDaemonClientError(IntegrationTestError):
-    """Exception raised when AppDaemon operations fail.
-
-    This includes failures in:
-    - AppDaemon API interactions
-    - App state queries
-    - Service calls to AppDaemon
-    """
-
-    pass
-
-
 class TimeMachineError(IntegrationTestError):
     """Exception raised when time manipulation operations fail.
 

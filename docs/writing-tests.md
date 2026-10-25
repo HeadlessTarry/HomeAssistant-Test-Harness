@@ -2,7 +2,7 @@
 
 ## Overview
 
-Tests run against real Home Assistant and AppDaemon instances, not mocks. This ensures your configuration works correctly in an environment that mirrors production.
+Tests run against a real Home Assistant instance, not mocks. This ensures your configuration works correctly in an environment that mirrors production.
 
 ## Basic Test
 

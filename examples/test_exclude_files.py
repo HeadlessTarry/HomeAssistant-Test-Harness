@@ -23,28 +23,19 @@ class TestExcludeFilesConstructor:
 
     def test_init_accepts_exclude_files_parameter(self) -> None:
         """Test that DockerComposeManager accepts exclude_files parameter."""
-        with (
-            patch.object(DockerComposeManager, "_detect_ha_config_root", return_value=MagicMock()),
-            patch.object(DockerComposeManager, "_detect_appdaemon_config_root", return_value=MagicMock()),
-        ):
+        with (patch.object(DockerComposeManager, "_detect_ha_config_root", return_value=MagicMock()),):
             manager = DockerComposeManager(exclude_files=["automations/test.yaml"])
             assert manager._exclude_files == ["automations/test.yaml"]
 
     def test_init_defaults_to_empty_list_when_not_provided(self) -> None:
         """Test that DockerComposeManager defaults exclude_files to empty list."""
-        with (
-            patch.object(DockerComposeManager, "_detect_ha_config_root", return_value=MagicMock()),
-            patch.object(DockerComposeManager, "_detect_appdaemon_config_root", return_value=MagicMock()),
-        ):
+        with (patch.object(DockerComposeManager, "_detect_ha_config_root", return_value=MagicMock()),):
             manager = DockerComposeManager()
             assert manager._exclude_files == []
 
     def test_init_accepts_none_as_exclude_files(self) -> None:
         """Test that DockerComposeManager accepts None for exclude_files."""
-        with (
-            patch.object(DockerComposeManager, "_detect_ha_config_root", return_value=MagicMock()),
-            patch.object(DockerComposeManager, "_detect_appdaemon_config_root", return_value=MagicMock()),
-        ):
+        with (patch.object(DockerComposeManager, "_detect_ha_config_root", return_value=MagicMock()),):
             manager = DockerComposeManager(exclude_files=None)
             assert manager._exclude_files == []
 
@@ -61,10 +52,7 @@ class TestExcludeFilesDeployment:
 
     def _create_manager(self, ha_root: Path, exclude_files: list[str]) -> DockerComposeManager:
         """Create a DockerComposeManager with mocked detection methods."""
-        with (
-            patch.object(DockerComposeManager, "_detect_ha_config_root", return_value=ha_root),
-            patch.object(DockerComposeManager, "_detect_appdaemon_config_root", return_value=MagicMock()),
-        ):
+        with (patch.object(DockerComposeManager, "_detect_ha_config_root", return_value=ha_root),):
             return DockerComposeManager(exclude_files=exclude_files)
 
     def test_deployment_excludes_exact_file_path(self) -> None:

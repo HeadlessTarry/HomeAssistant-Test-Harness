@@ -174,13 +174,11 @@ HomeAssistant-Test-Harness/
 │   ├── conftest.py                    # Pytest plugin fixtures
 │   ├── docker_manager.py              # Docker orchestration
 │   ├── homeassistant_client.py        # HA API client
-│   ├── appdaemon_client.py            # AppDaemon client
 │   ├── time_machine.py                # Time manipulation
 │   ├── exceptions.py                  # Exception hierarchy
 │   └── containers/                    # Docker configurations
 │       ├── docker-compose.yaml
-│       ├── homeassistant/             # HA setup scripts
-│       └── appdaemon/                 # AppDaemon setup
+│       └── homeassistant/             # HA setup scripts
 ├── examples/                          # Example tests
 │   ├── test_basic_usage.py
 │   └── config/                        # Minimal HA config

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Integration tests use a Docker Compose environment to run isolated instances of Home Assistant and AppDaemon.
+Integration tests use a Docker Compose environment to run an isolated instance of Home Assistant.
 
 ## Container Architecture
 
@@ -10,32 +10,31 @@ Integration tests use a Docker Compose environment to run isolated instances of 
 ┌─────────────────────────────────────────────────────────────┐
 │  Test Suite (pytest)                                        │
 │  ├── Uses harness package (DockerComposeManager,            │
-│  │   HomeAssistant, AppDaemon, TimeMachine)                 │
+│  │   HomeAssistant, TimeMachine)                            │
 │  └── Interacts via HTTP/WebSocket APIs                      │
 └─────────────────────────────────────────────────────────────┘
                                │
                                ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  Docker Compose Environment                                 │
-│  ┌────────────────────────┐   ┌──────────────────────────┐  │
-│  │  Home Assistant        │   │  AppDaemon               │  │
-│  │  Port: 8123 (ephemeral)│   │  Port: 5050 (ephemeral)  │  │
-│  │  ├── Configuration     │   │  ├── Apps                │  │
-│  │  │   (from repo)       │   │  │   (from repo)         │  │
-│  │  │   ├── Automations   │   │  ├── Connected to HA     │  │
-│  │  │   ├── Scripts       │   │  └── API enabled         │  │
-│  │  │   └── Templates     │   │                          │  │
-│  │  └── ha_test_harness   │   │                          │  │
-│  │      (custom component)│   │                          │  │
-│  └────────────────────────┘   └──────────────────────────┘  │
-│             │                              │                │
-│             └──────────┬───────────────────┘                │
-│                        ▼                                    │
-│              ┌──────────────────┐                           │
-│              │  Shared Volume   │                           │
-│              │  - Auth token    │                           │
-│              │  - Ready flags   │                           │
-│              └──────────────────┘                           │
+│  ┌────────────────────────┐                                 │
+│  │  Home Assistant        │                                 │
+│  │  Port: 8123 (ephemeral)│                                 │
+│  │  ├── Configuration     │                                 │
+│  │  │   (from repo)       │                                 │
+│  │  │   ├── Automations   │                                 │
+│  │  │   ├── Scripts       │                                 │
+│  │  │   └── Templates     │                                 │
+│  │  └── ha_test_harness   │                                 │
+│  │      (custom component)│                                 │
+│  └────────────────────────┘                                 │
+│             │                                               │
+│             ▼                                               │
+│   ┌──────────────────┐                                      │
+│   │  Shared Volume   │                                      │
+│   │  - Auth token    │                                      │
+│   │  - Ready flag    │                                      │
+│   └──────────────────┘                                      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -44,7 +43,7 @@ the test fixtures to interact with HA over WebSocket commands for entity registr
 
 ## Startup Sequence
 
-The `docker-compose.yaml` orchestrates container startup with dependencies and health checks:
+The `docker-compose.yaml` orchestrates container startup with a health check:
 
 1. **Home Assistant starts** (`containers/homeassistant/entrypoint.sh`):
    - Copies repository configuration into `/config`
@@ -54,18 +53,9 @@ The `docker-compose.yaml` orchestrates container startup with dependencies and h
    - Writes token to shared volume (`/shared_data/.ha_token`)
    - Creates ready flag (`/shared_data/.homeassistant_ready`)
 
-2. **AppDaemon starts** (after HA is healthy) (`containers/appdaemon/entrypoint.sh`):
-   - Waits for HA token file
-   - Reads HA long-lived access token from shared volume
-   - Generates `appdaemon.yaml` from template with token
-   - Starts AppDaemon server
-   - Waits for initialization to complete
-   - Creates ready flag (`/shared_data/.appdaemon_ready`)
-
-3. **Docker Compose health checks**:
+2. **Docker Compose health check**:
    - Home Assistant: checks for `.homeassistant_ready` flag
-   - AppDaemon: checks for `.appdaemon_ready` flag
-   - `docker compose up --wait` blocks until both are healthy
+   - `docker compose up --wait` blocks until it is healthy
 
 ## Parallel Test Execution
 

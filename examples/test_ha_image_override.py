@@ -16,9 +16,8 @@ class TestDockerComposeManagerHAImage:
 
     def test_init_accepts_ha_image_parameter(self) -> None:
         """Test that DockerComposeManager accepts ha_image parameter."""
-        with patch.object(DockerComposeManager, "_detect_ha_config_root") as mock_detect_ha, patch.object(DockerComposeManager, "_detect_appdaemon_config_root") as mock_detect_ad:
+        with patch.object(DockerComposeManager, "_detect_ha_config_root") as mock_detect_ha:
             mock_detect_ha.return_value = MagicMock()
-            mock_detect_ad.return_value = MagicMock()
 
             manager = DockerComposeManager(ha_image="homeassistant/home-assistant:2026.7")
 
@@ -26,9 +25,8 @@ class TestDockerComposeManagerHAImage:
 
     def test_init_defaults_to_none_when_ha_image_not_provided(self) -> None:
         """Test that DockerComposeManager defaults ha_image to None when not provided."""
-        with patch.object(DockerComposeManager, "_detect_ha_config_root") as mock_detect_ha, patch.object(DockerComposeManager, "_detect_appdaemon_config_root") as mock_detect_ad:
+        with patch.object(DockerComposeManager, "_detect_ha_config_root") as mock_detect_ha:
             mock_detect_ha.return_value = MagicMock()
-            mock_detect_ad.return_value = MagicMock()
 
             manager = DockerComposeManager()
 
@@ -38,7 +36,6 @@ class TestDockerComposeManagerHAImage:
         """Test that start() passes HA_IMAGE environment variable to docker-compose."""
         with (
             patch.object(DockerComposeManager, "_detect_ha_config_root") as mock_detect_ha,
-            patch.object(DockerComposeManager, "_detect_appdaemon_config_root") as mock_detect_ad,
             patch.object(DockerComposeManager, "_stage_ha_config_with_entities") as mock_stage,
             patch("subprocess.run") as mock_run,
             patch.object(DockerComposeManager, "_refresh_container_details") as mock_refresh,
@@ -46,7 +43,6 @@ class TestDockerComposeManagerHAImage:
             mock_ha_root = MagicMock()
             mock_ha_root.__truediv__ = MagicMock(return_value=MagicMock(exists=MagicMock(return_value=True)))
             mock_detect_ha.return_value = mock_ha_root
-            mock_detect_ad.return_value = MagicMock()
             mock_stage.return_value = MagicMock()
             mock_refresh.return_value = {}
 
@@ -62,7 +58,6 @@ class TestDockerComposeManagerHAImage:
         """Test that start() does not pass HA_IMAGE when ha_image is None."""
         with (
             patch.object(DockerComposeManager, "_detect_ha_config_root") as mock_detect_ha,
-            patch.object(DockerComposeManager, "_detect_appdaemon_config_root") as mock_detect_ad,
             patch.object(DockerComposeManager, "_stage_ha_config_with_entities") as mock_stage,
             patch("subprocess.run") as mock_run,
             patch.object(DockerComposeManager, "_refresh_container_details") as mock_refresh,
@@ -70,7 +65,6 @@ class TestDockerComposeManagerHAImage:
             mock_ha_root = MagicMock()
             mock_ha_root.__truediv__ = MagicMock(return_value=MagicMock(exists=MagicMock(return_value=True)))
             mock_detect_ha.return_value = mock_ha_root
-            mock_detect_ad.return_value = MagicMock()
             mock_stage.return_value = MagicMock()
             mock_refresh.return_value = {}
 
