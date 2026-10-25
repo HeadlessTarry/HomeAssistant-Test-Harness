@@ -129,7 +129,7 @@ echo "✅ Onboarding steps completed"
 # The API answers before startup completes, so tests could otherwise run against a half-loaded config.
 echo "⏳ Waiting for Home Assistant startup to complete..."
 attempt=0
-while [ $attempt -lt $max_attempts ]; do
+while [[ $attempt -lt $max_attempts ]]; do
   if curl -s http://localhost:8123/api/config -H "Authorization: Bearer ${ACCESS_TOKEN}" | grep -q '"state": *"RUNNING"'; then
     echo "✅ Home Assistant startup complete"
     break
@@ -138,7 +138,7 @@ while [ $attempt -lt $max_attempts ]; do
   sleep 1
 done
 
-if [ $attempt -eq $max_attempts ]; then
+if [[ $attempt -eq $max_attempts ]]; then
   echo "❌ Home Assistant did not reach RUNNING state within 60 seconds"
   exit 1
 fi
