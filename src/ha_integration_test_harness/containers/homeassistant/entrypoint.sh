@@ -125,6 +125,24 @@ if [[ "$INTEGRATION_STATUS" != 2* ]]; then
 fi
 echo "✅ Onboarding steps completed"
 
+# Wait for Home Assistant to finish starting (all integrations, including automations, set up).
+# The API answers before startup completes, so tests could otherwise run against a half-loaded config.
+echo "⏳ Waiting for Home Assistant startup to complete..."
+attempt=0
+while [ $attempt -lt $max_attempts ]; do
+  if curl -s http://localhost:8123/api/config -H "Authorization: Bearer ${ACCESS_TOKEN}" | grep -q '"state": *"RUNNING"'; then
+    echo "✅ Home Assistant startup complete"
+    break
+  fi
+  attempt=$((attempt + 1))
+  sleep 1
+done
+
+if [ $attempt -eq $max_attempts ]; then
+  echo "❌ Home Assistant did not reach RUNNING state within 60 seconds"
+  exit 1
+fi
+
 # Create readiness marker to signal initialization is complete
 touch /shared_data/.homeassistant_ready
 

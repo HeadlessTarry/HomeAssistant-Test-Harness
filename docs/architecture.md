@@ -51,6 +51,7 @@ The `docker-compose.yaml` orchestrates container startup with a health check:
    - Completes onboarding (creates test user)
    - Generates long-lived access token
    - Writes token to shared volume (`/shared_data/.ha_token`)
+   - Waits for startup to complete (`/api/config` reports `RUNNING`)
    - Creates ready flag (`/shared_data/.homeassistant_ready`)
 
 2. **Docker Compose health check**:
