@@ -30,7 +30,7 @@ Create a scratch project under `.verify/` (gitignored):
 .verify/<name>/
 ├── pytest.ini                        # [pytest] plus any plugin options (ha_image, ha_exclude_files, ha_persistent_entities_path)
 ├── home_assistant/configuration.yaml # default_config: plus the automations or helpers under test
-├── tmp/                              # empty; the plugin stages HA config here (see Cleanup)
+├── tmp/                              # created by the run command; the plugin stages HA config here (see Cleanup)
 └── test_experiment.py                # uses home_assistant, time_machine, docker fixtures
 ```
 
@@ -39,7 +39,7 @@ Create a scratch project under `.verify/` (gitignored):
 Run it from inside the scratch project:
 
 ```bash
-cd .verify/<name> && env -u HOME_ASSISTANT_CONFIG_ROOT TMPDIR="$PWD/tmp" uv run pytest -p no:cacheprovider --log-cli-level=INFO
+cd .verify/<name> && mkdir -p tmp && env -u HOME_ASSISTANT_CONFIG_ROOT TMPDIR="$PWD/tmp" uv run pytest -p no:cacheprovider --log-cli-level=INFO
 ```
 
 - The `env -u` removes the config-root variable. If it is set (for example from the repo's `.env`), the plugin uses `examples/` instead of your scratch
