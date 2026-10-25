@@ -3,7 +3,7 @@
 ## Overview
 
 The integration test harness provides a complete Docker-based test environment for
-Home Assistant and AppDaemon. Tests run against real instances, not mocks, ensuring
+Home Assistant. Tests run against a real instance, not mocks, ensuring
 your configuration works correctly.
 
 ## Installation
@@ -14,12 +14,10 @@ See [Installation Guide](installation.md) for details.
 
 When you run tests, the harness:
 
-1. **Checks environment variables**: Looks for `HOME_ASSISTANT_CONFIG_ROOT` (Home Assistant) and `APPDAEMON_CONFIG_ROOT` (AppDaemon)
-2. **Falls back to subdirectories**: If environment variables are not set, looks for `home_assistant/` and `appdaemon/` subdirectories in the current working directory
-3. **Validates configuration**:
-   - Checks that `configuration.yaml` exists in the Home Assistant root (raises error if missing)
-   - Checks that `apps/apps.yaml` exists in the AppDaemon root (logs warning if missing)
-4. **Mounts directories**: Mounts the directories as `/config` in the Home Assistant container and `/conf/apps` in the AppDaemon container
+1. **Checks environment variable**: Looks for `HOME_ASSISTANT_CONFIG_ROOT`
+2. **Falls back to subdirectory**: If the environment variable is not set, looks for a `home_assistant/` subdirectory in the current working directory
+3. **Validates configuration**: Checks that `configuration.yaml` exists in the Home Assistant root (raises error if missing)
+4. **Mounts directory**: Mounts a staged copy of the directory as `/config` in the Home Assistant container
 
 **Note:** You can run tests from any directory by using either:
 
@@ -29,22 +27,18 @@ When you run tests, the harness:
 my-project/
 ├── home_assistant/          # Home Assistant configuration
 │   └── configuration.yaml
-├── appdaemon/              # AppDaemon configuration
-│   └── apps/
-│       └── apps.yaml
 └── tests/                  # Your test files
     └── test_integration.py
 ```
 
-**Option 2 - Set environment variables explicitly**:
+**Option 2 - Set the environment variable explicitly**:
 
 ```bash
 export HOME_ASSISTANT_CONFIG_ROOT=/path/to/homeassistant/config
-export APPDAEMON_CONFIG_ROOT=/path/to/appdaemon/config
 pytest
 ```
 
-If neither environment variables are set nor the default subdirectories exist, configuration validation will fail.
+If neither the environment variable is set nor the default subdirectory exists, configuration validation will fail.
 
 ## Container Lifecycle
 
@@ -68,5 +62,5 @@ The harness mounts your entire repository, so all files are available to Home As
 - **[Writing Tests](writing-tests.md)** — When writing tests: basic patterns, time-based tests, calling actions, polling
 - **[Persistent Entities](persistent-entities.md)** — When you need entities available across multiple tests: YAML configuration, startup behavior, comparison with per-test entities
 - **[Best Practices](best-practices.md)** — When optimizing test patterns: cleanup strategies, factory fixtures, area/label testing, time machine isolation
-- **[Fixtures Reference](fixtures.md)** — When understanding available fixtures: docker, home_assistant, app_daemon, time_machine
+- **[Fixtures Reference](fixtures.md)** — When understanding available fixtures: docker, home_assistant, time_machine
 - **[Troubleshooting](troubleshooting.md)** — When encountering issues: common errors, debugging tips

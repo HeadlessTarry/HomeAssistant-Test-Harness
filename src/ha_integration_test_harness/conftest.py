@@ -8,7 +8,6 @@ from typing import Any, Generator, Optional
 
 import pytest
 
-from .appdaemon_client import AppDaemon
 from .docker_manager import DockerComposeManager
 from .exceptions import HomeAssistantTimeoutError
 from .homeassistant_client import HomeAssistant
@@ -125,7 +124,7 @@ def ha_image(request: pytest.FixtureRequest) -> Optional[str]:
 def docker(request: pytest.FixtureRequest, ha_image: Optional[str]) -> Generator[DockerComposeManager, None, None]:
     """Provide Docker Compose manager for integration tests.
 
-    This fixture creates and starts Docker containers for Home Assistant and AppDaemon,
+    This fixture creates and starts Docker containers for Home Assistant,
     managing their lifecycle for the entire test session (scope="session") to avoid
     the overhead of repeatedly starting and stopping containers.
 
@@ -224,24 +223,6 @@ def home_assistant(request: pytest.FixtureRequest, docker: DockerComposeManager)
 
     request.session.stash[_home_assistant_key] = ha
     return ha
-
-
-@pytest.fixture(scope="session")
-def app_daemon(docker: DockerComposeManager) -> AppDaemon:
-    """Provide AppDaemon API client for integration tests.
-
-    This fixture creates an AppDaemon client configured with the dynamically
-    assigned URL from the Docker container. The client is shared across all tests
-    in the session (scope="session").
-
-    Args:
-        docker: The Docker container manager fixture.
-
-    Returns:
-        AppDaemon: Client for AppDaemon API interactions.
-    """
-    base_url = docker.get_appdaemon_url()
-    return AppDaemon(base_url)
 
 
 @pytest.fixture(scope="session")

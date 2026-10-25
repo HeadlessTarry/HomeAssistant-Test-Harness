@@ -25,19 +25,6 @@ def _make_manager() -> DockerComposeManager:
             std_out="",
             std_err="",
         ),
-        "appdaemon": DockerContainer(
-            service="appdaemon",
-            name="test-ad-1",
-            container_id="def456",
-            url="http://localhost:5050",
-            local_port=5050,
-            mapped_port=5050,
-            status="running",
-            health="healthy",
-            exit_code=0,
-            std_out="",
-            std_err="",
-        ),
     }
     manager._containers_dir = "/fake/containers"
     return manager
