@@ -30,7 +30,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import hass_wrapper
-import voluptuous as vol
+import probatio as vol
 from homeassistant.components import websocket_api
 from homeassistant.components.template.template_entity import TemplateEntity
 from homeassistant.components.websocket_api.connection import ActiveConnection
