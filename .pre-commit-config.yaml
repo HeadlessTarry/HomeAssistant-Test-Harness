@@ -28,7 +28,6 @@ repos:
     hooks:
       - id: markdownlint_docker
         args: ['--style', '.markdownlint_style.rb']
-        exclude: '^\.github/ISSUE_TEMPLATE/'
   - repo: https://github.com/adrienverge/yamllint
     rev: v1.38.0
     hooks:
