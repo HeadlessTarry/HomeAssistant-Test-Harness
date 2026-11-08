@@ -36,9 +36,7 @@ dev = [
     "pytest>=9.0.3",
     "pre-commit>=3.0.0",
     "mypy>=1.0.0",
-    "black>=23.0.0",
-    "isort>=5.12.0",
-    "flake8>=6.0.0",
+    "ruff>=0.17.4",
     "types-requests>=2.33.0.20260513",
     "types-python-dateutil",
     "types-PyYAML>=6.0.0",
@@ -75,17 +73,13 @@ python_classes = "Test*"
 python_functions = "test_*"
 ha_persistent_entities_path = "examples/persistent_entities.yaml"
 
-[tool.black]
+[tool.ruff]
 line-length = 200
-target-version = ["py314"]
+target-version = "py314"
+extend-exclude = ["*.egg-info", "build", "dist"]
 
-[tool.isort]
-profile = "black"
-line_length = 200
-
-[tool.flake8]
-max-line-length = 200
-exclude = [".venv", "__pycache__", ".pytest_cache", ".mypy_cache", "*.egg-info", "build", "dist"]
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
 
 [tool.mypy]
 python_version = "3.14"
