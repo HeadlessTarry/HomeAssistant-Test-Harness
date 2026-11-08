@@ -28,9 +28,7 @@ This approach had several drawbacks:
 Introduce a fluent builder API that reduces verbosity while remaining explicit:
 
 ```python
-home_assistant.given_an_entity("binary_sensor.study_pir", "off") \
-    .with_device_class("motion") \
-    .in_area("study")
+home_assistant.given_an_entity("binary_sensor.study_pir", "off").with_device_class("motion").in_area("study")
 ```
 
 ### 🂣 API Design
@@ -97,9 +95,7 @@ home_assistant.given_entity_has("sensor.temp", area="study")
 ### 🂣 After
 
 ```python
-home_assistant.given_an_entity("sensor.temp", "21.5") \
-    .with_attributes({"unit_of_measurement": "°C"}) \
-    .in_area("study")
+home_assistant.given_an_entity("sensor.temp", "21.5").with_attributes({"unit_of_measurement": "°C"}).in_area("study")
 ```
 
 ### 🂣 Before (with device_class and labels)
@@ -112,8 +108,5 @@ home_assistant.given_entity_has("binary_sensor.motion", area="study", labels=["s
 ### 🂣 After (with device_class and labels)
 
 ```python
-home_assistant.given_an_entity("binary_sensor.motion", "off") \
-    .with_device_class("motion") \
-    .in_area("study") \
-    .with_labels(["security"])
+home_assistant.given_an_entity("binary_sensor.motion", "off").with_device_class("motion").in_area("study").with_labels(["security"])
 ```

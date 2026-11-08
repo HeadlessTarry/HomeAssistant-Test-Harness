@@ -81,14 +81,16 @@ def test_downstream_session_discovers_config_honours_exclusions_and_tears_down(d
         },
     )
     downstream.makefile(".ini", pytest="[pytest]\nha_exclude_files = packages/excluded.yaml\n")
-    downstream.makepyfile(test_downstream="""
+    downstream.makepyfile(
+        test_downstream="""
         def test_config_deployed_without_excluded_file(home_assistant):
             home_assistant.assert_entity_state("input_boolean.kept", "off")
             assert home_assistant.get_state("input_boolean.excluded") is None
 
         def test_failing_test(home_assistant):
             assert False, "deliberate failure"
-        """)
+        """
+    )
 
     result, seen = _run_downstream_session(downstream)
 

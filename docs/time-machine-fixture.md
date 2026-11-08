@@ -20,6 +20,7 @@ time_machine.advance_to_preset(preset: str, offset: Optional[timedelta] = None) 
 ```python
 from datetime import timedelta
 
+
 def test_time_manipulation(home_assistant, time_machine):
     # Advance time by 5 days
     time_machine.fast_forward(timedelta(days=5))
@@ -218,6 +219,7 @@ def test_morning_automation(home_assistant, time_machine):
 
     # ... test logic ...
 
+
 def test_evening_automation(home_assistant, time_machine):
     # This test runs AFTER test_morning_automation, so time is already
     # Monday 7:XX. We need to explicitly advance to evening:
@@ -255,7 +257,7 @@ so time persists and cannot be reset.
 ```python
 def test_automation_sequence(home_assistant, time_machine):
     # Set initial conditions
-    time_machine.jump_to_next(day="Monday", hour=6, minute=0, second=0) # Start from known time
+    time_machine.jump_to_next(day="Monday", hour=6, minute=0, second=0)  # Start from known time
     home_assistant.set_state("input_boolean.test_mode", "off")
 
     # ... test logic ...
@@ -268,6 +270,7 @@ calculations). These may not respond correctly with a fake time set.
 
 ```python
 from ha_integration_test_harness import HomeAssistant, TimeMachine
+
 
 def test_heating_schedule(home_assistant: HomeAssistant, time_machine: TimeMachine):
     """Test that heating turns on at scheduled time and turns off after delay."""

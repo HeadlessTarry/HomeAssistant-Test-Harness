@@ -166,10 +166,7 @@ def test_automation(home_assistant):
 
 ```python
 def test_area_label_on_per_test_entity(home_assistant):
-    home_assistant.given_an_entity("light.test_light", "off") \
-        .in_area("living_room") \
-        .with_labels(["night_mode"]) \
-        .with_attributes({"brightness": 200})
+    home_assistant.given_an_entity("light.test_light", "off").in_area("living_room").with_labels(["night_mode"]).with_attributes({"brightness": 200})
 
     # Entity exists, is registered, and has area/label assigned
     assert home_assistant.get_state("light.test_light") is not None
@@ -247,21 +244,14 @@ home_assistant.given_an_entity("binary_sensor.test", "off").with_device_class("m
 Sets custom attributes for the entity. Successive calls merge attributes.
 
 ```python
-home_assistant.given_an_entity("sensor.test", "20").with_attributes({
-    "unit_of_measurement": "°C",
-    "device_class": "temperature"
-})
+home_assistant.given_an_entity("sensor.test", "20").with_attributes({"unit_of_measurement": "°C", "device_class": "temperature"})
 ```
 
 ### Chaining Example
 
 ```python
 def test_complex_entity(home_assistant):
-    home_assistant.given_an_entity("light.living_room", "off") \
-        .in_area("living_room") \
-        .with_labels(["night_mode"]) \
-        .with_device_class("light") \
-        .with_attributes({"brightness": 200, "color_temp": 300})
+    home_assistant.given_an_entity("light.living_room", "off").in_area("living_room").with_labels(["night_mode"]).with_device_class("light").with_attributes({"brightness": 200, "color_temp": 300})
 
     # Entity is fully configured and will be cleaned up automatically
 ```

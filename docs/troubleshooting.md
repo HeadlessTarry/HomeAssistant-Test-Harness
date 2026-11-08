@@ -293,6 +293,7 @@ Add to your test or conftest.py:
 
 ```python
 import logging
+
 logging.basicConfig(level=logging.DEBUG)
 ```
 

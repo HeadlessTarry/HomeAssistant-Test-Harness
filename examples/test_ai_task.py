@@ -6,7 +6,6 @@ from ha_integration_test_harness import HomeAssistant
 
 
 class TestGenerateData:
-
     def test_generate_data_returns_mock_response(self, home_assistant: HomeAssistant) -> None:
         """Test that ai_task.generate_data returns a fixed mock response."""
         response = home_assistant.call_action_with_response(
@@ -25,7 +24,6 @@ class TestGenerateData:
 
 
 class TestAutomationWithResponseVariable:
-
     def test_automation_uses_ai_task_response(self, home_assistant: HomeAssistant) -> None:
         """Test that an automation can use ai_task.generate_data response_variable."""
         home_assistant.call_action(

@@ -6,7 +6,6 @@ from ha_integration_test_harness import HomeAssistant
 
 
 class TestAssertEntityState:
-
     an_entity = "sensor.test_entity"
 
     @pytest.fixture(autouse=True)
