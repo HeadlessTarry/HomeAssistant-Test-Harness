@@ -41,7 +41,7 @@ The `run_checks.sh` script runs all validation steps:
 
 This script:
 
-1. Runs all pre-commit hooks (black, isort, flake8, mypy, yamllint, markdownlint)
+1. Runs all pre-commit hooks (ruff, mypy, yamllint, markdownlint)
 2. Builds the package distribution
 3. Tests package installation and imports
 4. Runs example tests
@@ -49,7 +49,7 @@ This script:
 ### Individual Tools
 
 Run a single pre-commit hook exactly as CI does, using any hook `id` from
-[`.pre-commit-config.yaml`](../.pre-commit-config.yaml) (e.g. `mypy`, `black`, `isort`):
+[`.pre-commit-config.yaml`](../.pre-commit-config.yaml) (e.g. `mypy`, `ruff-check`, `ruff-format`):
 
 ```bash
 uv run pre-commit run <hook-id> --all-files
@@ -148,8 +148,7 @@ dev = [
 ### Python
 
 - **Line length**: 200 characters
-- **Formatter**: Black
-- **Import sorting**: isort (black profile)
+- **Formatter and linter**: ruff (`ruff format` and `ruff check`, including import sorting)
 - **Type hints**: Required for all public APIs
 - **Docstrings**: Google style
 

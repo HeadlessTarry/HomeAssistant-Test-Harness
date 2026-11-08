@@ -524,7 +524,7 @@ class TimeMachine:
         """
         # Validate callback is configured
         if self._get_entity_state is None:
-            raise ValueError("Cannot use advance_to_preset: get_entity_state callback not configured in TimeMachine. " "This callback is required to fetch sunrise/sunset times from Home Assistant.")
+            raise ValueError("Cannot use advance_to_preset: get_entity_state callback not configured in TimeMachine. This callback is required to fetch sunrise/sunset times from Home Assistant.")
 
         # Validate preset
         preset_lower = preset.lower()
@@ -544,7 +544,7 @@ class TimeMachine:
             time_str_from_entity = attributes.get("next_setting")
 
         if not time_str_from_entity:
-            raise TimeMachineError(f"Could not find {preset_lower} time in sun.sun entity attributes. " f"Available attributes: {list(attributes.keys())}")
+            raise TimeMachineError(f"Could not find {preset_lower} time in sun.sun entity attributes. Available attributes: {list(attributes.keys())}")
 
         # Parse the ISO 8601 datetime string
         try:

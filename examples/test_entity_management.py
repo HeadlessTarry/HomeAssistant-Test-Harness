@@ -28,7 +28,6 @@ from ha_integration_test_harness import HomeAssistant
 
 
 class TestEntitiesManagedByTests:
-
     supported_domains = ["sensor", "binary_sensor", "switch", "light", "media_player", "select"]
     test_entities = [f"{domain}.per_test_entity" for domain in supported_domains]
 
@@ -98,7 +97,6 @@ class TestEntitiesManagedByTests:
 
 
 class TestEntitiesWithAreasAndLabels:
-
     light_entity = "light.test_light_entity"
 
     @pytest.fixture(autouse=True)
@@ -156,7 +154,6 @@ class TestEntitiesWithAreasAndLabels:
 
 
 class TestPersistentEntities:
-
     def test_persistent_entities_available_with_expected_initial_state(self, home_assistant: HomeAssistant) -> None:
         """Test that persistent entities exist and have expected initial state.
 
@@ -174,7 +171,6 @@ class TestPersistentEntities:
 
 
 class TestCallHomeAssitantActions:
-
     # Not all domains offer `turn_on`/`turn_off` action calls
     supported_domains = ["switch", "light", "media_player"]
 
@@ -203,7 +199,6 @@ class TestCallHomeAssitantActions:
 
 
 class TestMediaPlayerEntity:
-
     def test_create_media_player_entity(self, home_assistant: HomeAssistant) -> None:
         """Test that a media_player entity can be created via given_an_entity()."""
         home_assistant.given_an_entity("media_player.test_tv", "off")
@@ -231,7 +226,6 @@ class TestMediaPlayerEntity:
 
 
 class TestSelectEntity:
-
     def test_create_select_entity_with_options(self, home_assistant: HomeAssistant) -> None:
         """Test that a select entity can be created with options via given_an_entity()."""
         home_assistant.given_an_entity("select.house_mode", "Home").with_attributes({"options": ["Home", "Away", "Night"]})

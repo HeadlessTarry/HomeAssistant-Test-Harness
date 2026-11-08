@@ -489,7 +489,7 @@ class DockerComposeManager:
             )
         else:
             raise PersistentEntityError(
-                "Cannot append persistent entities: existing 'homeassistant.packages' is not a block mapping. " "Please convert it to a block mapping before using ha_persistent_entities_path."
+                "Cannot append persistent entities: existing 'homeassistant.packages' is not a block mapping. Please convert it to a block mapping before using ha_persistent_entities_path."
             )
 
         return "\n".join(lines).rstrip() + "\n"

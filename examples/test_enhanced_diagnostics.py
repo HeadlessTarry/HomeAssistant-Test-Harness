@@ -31,7 +31,6 @@ def _make_manager() -> DockerComposeManager:
 
 
 class TestCollectDockerNetworkState:
-
     def test_captures_network_inspect_output(self) -> None:
         manager = _make_manager()
         logs: list[str] = []
@@ -61,7 +60,6 @@ class TestCollectDockerNetworkState:
 
 
 class TestCollectTcpConnectionState:
-
     def test_captures_tcp_state(self) -> None:
         manager = _make_manager()
         logs: list[str] = []
@@ -93,7 +91,6 @@ class TestCollectTcpConnectionState:
 
 
 class TestCollectMultiEndpointApiProbing:
-
     def test_probes_all_endpoints(self) -> None:
         manager = _make_manager()
         logs: list[str] = []
@@ -141,7 +138,6 @@ class TestCollectMultiEndpointApiProbing:
 
 
 class TestCollectHealthCheckCorrelation:
-
     def test_reports_healthy_and_reachable(self) -> None:
         manager = _make_manager()
         logs: list[str] = []
@@ -185,7 +181,6 @@ class TestCollectHealthCheckCorrelation:
 
 
 class TestCollectExtendedHaLogs:
-
     def test_captures_extended_logs(self) -> None:
         manager = _make_manager()
         logs: list[str] = []
@@ -222,7 +217,6 @@ class TestCollectExtendedHaLogs:
 
 
 class TestCollectProcessState:
-
     def test_captures_process_list(self) -> None:
         manager = _make_manager()
         logs: list[str] = []
@@ -254,7 +248,6 @@ class TestCollectProcessState:
 
 
 class TestGetContainerDiagnosticsIntegration:
-
     def test_calls_all_enhanced_collectors(self) -> None:
         manager = _make_manager()
         mock_response = MagicMock()

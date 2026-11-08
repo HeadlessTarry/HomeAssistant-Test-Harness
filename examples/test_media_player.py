@@ -6,7 +6,6 @@ from ha_integration_test_harness import HomeAssistant
 
 
 class TestPlayMedia:
-
     def test_play_media_transitions_to_playing(self, home_assistant: HomeAssistant) -> None:
         """Test that play_media transitions state to playing and stores media attributes."""
         home_assistant.given_an_entity("media_player.test_speaker", "idle")
@@ -48,7 +47,6 @@ class TestPlayMedia:
 
 
 class TestTransportControls:
-
     def test_media_play_from_paused(self, home_assistant: HomeAssistant) -> None:
         """Test that media_play transitions from paused to playing."""
         home_assistant.given_an_entity("media_player.test_speaker", "paused")
@@ -102,7 +100,6 @@ class TestTransportControls:
 
 
 class TestTrackControls:
-
     def test_next_track_increments(self, home_assistant: HomeAssistant) -> None:
         """Test that media_next_track increments media_track attribute."""
         home_assistant.given_an_entity("media_player.test_speaker", "playing")
@@ -159,7 +156,6 @@ class TestTrackControls:
 
 
 class TestVolumeControls:
-
     def test_volume_set(self, home_assistant: HomeAssistant) -> None:
         """Test that volume_set updates volume_level."""
         home_assistant.given_an_entity("media_player.test_speaker", "playing")
@@ -240,7 +236,6 @@ class TestVolumeControls:
 
 
 class TestShuffleControls:
-
     def test_shuffle_set_true(self, home_assistant: HomeAssistant) -> None:
         """Test that shuffle_set with True updates shuffle attribute."""
         home_assistant.given_an_entity("media_player.test_speaker", "playing")
@@ -292,7 +287,6 @@ class TestShuffleControls:
 
 
 class TestEdgeCases:
-
     def test_media_play_when_off_is_noop(self, home_assistant: HomeAssistant) -> None:
         """Test that media_play when off doesn't change state."""
         home_assistant.given_an_entity("media_player.test_speaker", "off")

@@ -44,7 +44,7 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[Any]) -> 
                     if docker_manager is not None and not _diagnostics_captured:
                         test_name = item.nodeid
                         test_duration = call.duration if hasattr(call, "duration") else None
-                        logger.warning(f"Home Assistant request timed out\n" f"{docker_manager.get_container_diagnostics(test_name=test_name, test_duration=test_duration)}")
+                        logger.warning(f"Home Assistant request timed out\n{docker_manager.get_container_diagnostics(test_name=test_name, test_duration=test_duration)}")
                         _diagnostics_captured = True
 
         if not item.session.stash.get(_failure_key, False):

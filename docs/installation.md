@@ -19,7 +19,7 @@ Add to your `pyproject.toml`:
 [project.optional-dependencies]
 dev = [
     "ha-integration-test-harness @ git+https://github.com/HeadlessTarry/HomeAssistant-Test-Harness.git",
-    # Add other dev dependencies here (e.g., pytest, black, mypy)
+    # Add other dev dependencies here (e.g., pytest, ruff, mypy)
 ]
 ```
 

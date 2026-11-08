@@ -94,6 +94,7 @@ Override the `ha_image` fixture in your `conftest.py`:
 ```python
 import pytest
 
+
 @pytest.fixture(scope="session")
 def ha_image():
     return "homeassistant/home-assistant:2026.7"

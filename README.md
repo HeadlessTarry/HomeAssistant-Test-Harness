@@ -6,7 +6,7 @@ A pytest plugin for integration testing Home Assistant configurations using Dock
 [![Quality Gate Status][quality-badge]][quality-url]
 [![License: MIT][license-badge]][license-url]
 [![Python 3.14.2+][python-badge]][python-url]
-[![Code style: black][black-badge]][black-url]
+[![Code style: Ruff][ruff-badge]][ruff-url]
 
 [ci-badge]: https://github.com/HeadlessTarry/HomeAssistant-Test-Harness/actions/workflows/ci.yaml/badge.svg
 [ci-url]: https://github.com/HeadlessTarry/HomeAssistant-Test-Harness/actions/workflows/ci.yaml
@@ -16,8 +16,8 @@ A pytest plugin for integration testing Home Assistant configurations using Dock
 [license-url]: https://opensource.org/licenses/MIT
 [python-badge]: https://img.shields.io/badge/python-3.14.2+-blue.svg
 [python-url]: https://www.python.org/downloads/
-[black-badge]: https://img.shields.io/badge/code%20style-black-000000.svg
-[black-url]: https://github.com/psf/black
+[ruff-badge]: https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json
+[ruff-url]: https://github.com/astral-sh/ruff
 
 ## ℹ️ About
 

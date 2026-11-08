@@ -45,14 +45,17 @@ Use factory patterns for creating multiple test entities with automatic cleanup:
 ```python
 import pytest
 
+
 @pytest.fixture
 def create_entity(home_assistant):
     """Factory fixture with automatic cleanup via given_an_entity."""
+
     def _create(entity_id, state):
         home_assistant.given_an_entity(entity_id, state)
         return entity_id
 
     return _create
+
 
 def test_multiple_entities(create_entity):
     light1 = create_entity("light.test1", "on")
@@ -64,6 +67,7 @@ def test_multiple_entities(create_entity):
 
 ```python
 import pytest
+
 
 @pytest.fixture
 def create_entity_manual(home_assistant):
@@ -80,6 +84,7 @@ def create_entity_manual(home_assistant):
     # Manual cleanup
     for entity_id in created:
         home_assistant.remove_entity(entity_id)
+
 
 def test_multiple_entities(create_entity_manual):
     light1 = create_entity_manual("light.test1", "on")
@@ -99,9 +104,7 @@ This means you can create a test-specific entity and immediately assign it an ar
 def test_per_test_entity_with_area_and_label(home_assistant):
     # Create a per-test light entity (registered in the entity registry)
     # and assign area and label via builder chain
-    home_assistant.given_an_entity("light.test_light", "off") \
-        .in_area("living_room") \
-        .with_labels(["night_mode"])
+    home_assistant.given_an_entity("light.test_light", "off").in_area("living_room").with_labels(["night_mode"])
 
     # Trigger automation targeting by label or area
     home_assistant.call_action("input_button", "press", {"entity_id": "input_button.label_automation_trigger"})
@@ -112,17 +115,16 @@ def test_per_test_entity_with_area_and_label(home_assistant):
 ```python
 def test_label_based_automation(home_assistant):
     # Assign the label — created in the label registry if it doesn't exist
-    home_assistant.given_an_entity("light.living_room", "off") \
-        .with_labels(["night_mode"])
+    home_assistant.given_an_entity("light.living_room", "off").with_labels(["night_mode"])
 
     home_assistant.call_action("input_button", "press", {"entity_id": "input_button.label_automation_trigger"})
     home_assistant.assert_entity_state("light.living_room", "on", timeout=10)
     # Labels are automatically restored after this test
 
+
 def test_area_based_automation(home_assistant):
     # Assign the area — created in the area registry if it doesn't exist
-    home_assistant.given_an_entity("light.living_room", "off") \
-        .in_area("living_room")
+    home_assistant.given_an_entity("light.living_room", "off").in_area("living_room")
 
     home_assistant.call_action("input_button", "press", {"entity_id": "input_button.area_automation_trigger"})
     home_assistant.assert_entity_state("light.living_room", "on", timeout=10)

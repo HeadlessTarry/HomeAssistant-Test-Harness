@@ -8,7 +8,6 @@ from ha_integration_test_harness import HomeAssistant
 
 
 class TestFormatStateHistory:
-
     def _make_client(self) -> HomeAssistant:
         return HomeAssistant("http://localhost:8123", "test-token")
 
@@ -150,7 +149,6 @@ class TestFormatStateHistory:
 
 
 class TestAssertionDiagnosticsIntegration:
-
     def test_diagnostics_appear_on_timeout(self, home_assistant: HomeAssistant) -> None:
         home_assistant.given_an_entity("sensor.diag_test", state="initial")
         with pytest.raises(AssertionError, match="did not reach expected conditions") as exc_info:
@@ -164,7 +162,6 @@ class TestAssertionDiagnosticsIntegration:
 
 
 class TestTimezoneAwareTimestamps:
-
     def _make_client(self) -> HomeAssistant:
         return HomeAssistant("http://localhost:8123", "test-token")
 

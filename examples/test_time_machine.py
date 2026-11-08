@@ -6,7 +6,6 @@ from ha_integration_test_harness import HomeAssistant, TimeMachine
 
 
 class TestTimeMachine:
-
     def parse_datetime(self, iso_string: str) -> datetime:
         """Parse ISO 8601 datetime string and strip timezone to get naive UTC datetime.
 
