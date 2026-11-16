@@ -5,6 +5,9 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    labels:
+      - "dependabot:dependencies"
+      - "dependabot:uv"
     cooldown:
       default-days: 20
       semver-patch-days: 10
@@ -15,8 +18,14 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    labels:
+      - "dependabot:dependencies"
+      - "dependabot:pre-commit"
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    labels:
+      - "dependabot:dependencies"
+      - "dependabot:github-actions"
