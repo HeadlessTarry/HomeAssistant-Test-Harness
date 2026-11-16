@@ -99,6 +99,6 @@ jobs:
               **Note:** Transitive deps pinned by a parent (e.g. aiohttp pinned by
               homeassistant) cannot exceed the parent's version upper bound. Resolving
               those vulnerabilities requires upgrading the parent dependency." \
-            --label dependencies \
+            --label dependabot:dependencies \
             --base main \
             --head "$BRANCH"
